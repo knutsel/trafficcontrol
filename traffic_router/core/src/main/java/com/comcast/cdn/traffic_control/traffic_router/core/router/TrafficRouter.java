@@ -247,7 +247,19 @@ public class TrafficRouter {
 	}
 	protected List<Cache> selectCaches(final Request request, final DeliveryService ds, final Track track) throws GeolocationException {
 		final CacheLocation cacheLocation = getCoverageZoneCacheLocation(request.getClientIP(), ds);
-		List<Cache> caches = selectCachesByCZ(ds, cacheLocation, track);
+
+		// JvD here 
+		List<Cache> caches;
+		if (ds.isDdcEnabled) {
+			if (request_is_popular) {
+		        caches = selectCachesByDirectMap(ds, cacheLocation, track); 
+				// should this return null or selectCachesbyCZ result if there are no direct conntct caches?
+			} else {
+		        caches = selectCachesByCZ(ds, cacheLocation, track);
+			}
+		} else {
+		    caches = selectCachesByCZ(ds, cacheLocation, track);
+		}
 
 		if (caches != null) {
 			return caches;
@@ -560,6 +572,7 @@ public class TrafficRouter {
 		}
 
 		final CacheLocation coverageZoneCacheLocation = getCoverageZoneCacheLocation(ip, deliveryService);
+		// JvD ??
 		final List<Cache> caches = selectCachesByCZ(deliveryService, coverageZoneCacheLocation);
 
 		if (caches == null || caches.isEmpty()) {

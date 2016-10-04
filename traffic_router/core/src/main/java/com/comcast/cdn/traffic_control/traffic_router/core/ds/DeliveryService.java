@@ -92,6 +92,7 @@ public class DeliveryService {
 	private final boolean acceptHttp;
 	private final boolean acceptHttps;
 	private final boolean redirectToHttps;
+	private final boolean isDdcEnabled; // should this be final? Why is isDns not?
 
 	public DeliveryService(final String id, final JSONObject dsJo) throws JSONException {
 		this.id = id;
@@ -142,6 +143,7 @@ public class DeliveryService {
 		acceptHttp = protocol != null ? protocol.optBoolean("acceptHttp", true) : true;
 		acceptHttps = protocol != null ? protocol.optBoolean("acceptHttps", false) : false;
 		redirectToHttps = protocol != null ? protocol.optBoolean("redirectToHttps", false) : false;
+		isDdcEnabled = true; // TODO JvD
 	}
 
 	public String getId() {
@@ -381,6 +383,14 @@ public class DeliveryService {
 	public void setDns(final boolean isDns) {
 		this.isDns = isDns;
 	}
+
+	public boolean isDdcEnabled() {
+		return isDdcEnabled;
+	}
+	public void setDns(final boolean isDdcEnabled) {
+		this.isDdcEnabled = isDdcEnabled;
+	}
+
 
 	public boolean appendQueryString() {
 		return shouldAppendQueryString;
