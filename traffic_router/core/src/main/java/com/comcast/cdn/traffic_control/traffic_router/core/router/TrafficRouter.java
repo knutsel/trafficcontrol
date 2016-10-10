@@ -218,7 +218,7 @@ public class TrafficRouter {
 	}
 
 	public Geolocation getLocation(final String clientIP, final DeliveryService deliveryService) throws GeolocationException {
-		return getLocation(clientIP, deliveryService.getGeolocationProvider(), deliveryService.getId());
+
 	}
 
 	public List<Cache> getCachesByGeo(final DeliveryService ds, final Geolocation clientLocation, final Track track) throws GeolocationException {
@@ -250,8 +250,10 @@ public class TrafficRouter {
 
 		// JvD here 
 		List<Cache> caches;
-		if (ds.isDdcEnabled) {
-			if (request_is_popular) {
+		if (ds.getDeepCache() != DeliveryService.DC_NEVER) {
+			// Don't change the order of evaluations in the next line!
+			if (ds.getDeepCache() == DeliveryService.DC_ALWAYS || ( ds.getDeepCache() == DeliveryService.DC_POPULAR && true) ) {
+			// if (ds.getDeepCache() == DeliveryService.DC_ALWAYS || ( ds.getDeepCache() == DeliveryService.DC_POPULAR && isPopular(ds, request.getPath() ) ) {
 		        caches = selectCachesByDirectMap(ds, cacheLocation, track); 
 				// should this return null or selectCachesbyCZ result if there are no direct conntct caches?
 			} else {
