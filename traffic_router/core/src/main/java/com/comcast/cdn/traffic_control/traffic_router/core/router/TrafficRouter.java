@@ -218,7 +218,7 @@ public class TrafficRouter {
 	}
 
 	public Geolocation getLocation(final String clientIP, final DeliveryService deliveryService) throws GeolocationException {
-
+		return getLocation(clientIP, deliveryService.getGeolocationProvider(), deliveryService.getId());
 	}
 
 	public List<Cache> getCachesByGeo(final DeliveryService ds, final Geolocation clientLocation, final Track track) throws GeolocationException {
@@ -250,11 +250,11 @@ public class TrafficRouter {
 
 		// JvD here 
 		List<Cache> caches;
-		if (ds.getDeepCache() != DeliveryService.DC_NEVER) {
+		if (ds.getDeepCache() != DeliveryService.DeepCacheType.DC_NEVER) {
 			// Don't change the order of evaluations in the next line!
-			if (ds.getDeepCache() == DeliveryService.DC_ALWAYS || ( ds.getDeepCache() == DeliveryService.DC_POPULAR && true) ) {
+			if (ds.getDeepCache() == DeliveryService.DeepCacheType.DC_ALWAYS || ( ds.getDeepCache() == DeliveryService.DeepCacheType.DC_POPULAR && true) ) {
 			// if (ds.getDeepCache() == DeliveryService.DC_ALWAYS || ( ds.getDeepCache() == DeliveryService.DC_POPULAR && isPopular(ds, request.getPath() ) ) {
-		        caches = selectCachesByDirectMap(ds, cacheLocation, track); 
+		        caches = selectCachesByDirectMap(ds, cacheLocation, request.getClientIP(), track); 
 				// should this return null or selectCachesbyCZ result if there are no direct conntct caches?
 			} else {
 		        caches = selectCachesByCZ(ds, cacheLocation, track);
@@ -432,6 +432,10 @@ public class TrafficRouter {
 		return ds.supportLocation(clientGeolocation);
 	}
 
+	public List<Cache> selectCachesByDirectMap(final DeliveryService ds, final CacheLocation cacheLocation, final String clientIp, final Track track) {
+		return null;
+	}
+
 	public List<Cache> selectCachesByCZ(final DeliveryService ds, final CacheLocation cacheLocation) {
 		return selectCachesByCZ(ds, cacheLocation, null);
 	}
@@ -574,7 +578,6 @@ public class TrafficRouter {
 		}
 
 		final CacheLocation coverageZoneCacheLocation = getCoverageZoneCacheLocation(ip, deliveryService);
-		// JvD ??
 		final List<Cache> caches = selectCachesByCZ(deliveryService, coverageZoneCacheLocation);
 
 		if (caches == null || caches.isEmpty()) {
