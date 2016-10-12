@@ -51,11 +51,9 @@ import com.comcast.cdn.traffic_control.traffic_router.core.router.StatTracker.Tr
 import com.comcast.cdn.traffic_control.traffic_router.core.router.StatTracker.Track.ResultDetails;
 import com.comcast.cdn.traffic_control.traffic_router.core.util.StringProtector;
 
+
 @SuppressWarnings({"PMD.TooManyFields","PMD.CyclomaticComplexity"})
 public class DeliveryService {
-	public static enum DeepCacheType { 
-		DC_NEVER, DC_ALWAYS, DC_POPULAR
-	}
 	protected static final Logger LOGGER = Logger.getLogger(DeliveryService.class);
 	private final String id;
 	@JsonIgnore
@@ -95,7 +93,7 @@ public class DeliveryService {
 	private final boolean acceptHttp;
 	private final boolean acceptHttps;
 	private final boolean redirectToHttps;
-	private final DeepCacheType deepCache;
+	private DeepCacheType deepCache; // should this be final or should it be settable?
 
 	public DeliveryService(final String id, final JSONObject dsJo) throws JSONException {
 		this.id = id;
@@ -147,7 +145,7 @@ public class DeliveryService {
 		acceptHttp = protocol != null ? protocol.optBoolean("acceptHttp", true) : true;
 		acceptHttps = protocol != null ? protocol.optBoolean("acceptHttps", false) : false;
 		redirectToHttps = protocol != null ? protocol.optBoolean("redirectToHttps", false) : false;
-		deepCache = DC_ALWAYS; // TODO JvD
+		deepCache = DeepCacheType.DC_ALWAYS; // TODO JvD
 	}
 
 	public String getId() {
@@ -386,6 +384,10 @@ public class DeliveryService {
 	}
 	public void setDns(final boolean isDns) {
 		this.isDns = isDns;
+	}
+
+	public static enum DeepCacheType { 
+		DC_NEVER, DC_ALWAYS, DC_POPULAR
 	}
 
 	public DeepCacheType getDeepCache() {

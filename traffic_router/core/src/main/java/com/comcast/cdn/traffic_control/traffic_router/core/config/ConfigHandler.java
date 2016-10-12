@@ -37,6 +37,7 @@ import com.comcast.cdn.traffic_control.traffic_router.core.loc.FederationsWatche
 import com.comcast.cdn.traffic_control.traffic_router.core.loc.GeolocationDatabaseUpdater;
 import com.comcast.cdn.traffic_control.traffic_router.core.loc.NetworkNode;
 import com.comcast.cdn.traffic_control.traffic_router.core.loc.NetworkUpdater;
+import com.comcast.cdn.traffic_control.traffic_router.core.loc.DeepNetworkUpdater;
 import com.comcast.cdn.traffic_control.traffic_router.core.loc.RegionalGeoUpdater;
 
 import com.comcast.cdn.traffic_control.traffic_router.core.secure.CertificatesPoller;
@@ -76,6 +77,7 @@ public class ConfigHandler {
 	private TrafficOpsUtils trafficOpsUtils;
 
 	private NetworkUpdater networkUpdater;
+	private DeepNetworkUpdater deepNetworkUpdater;
 	private FederationsWatcher federationsWatcher;
 	private RegionalGeoUpdater regionalGeoUpdater;
 	private SteeringWatcher steeringWatcher;
@@ -98,6 +100,9 @@ public class ConfigHandler {
 	}
 	public NetworkUpdater getNetworkUpdater () {
 		return networkUpdater;
+	}
+	public DeepNetworkUpdater getDeepNetworkUpdater () {
+		return deepNetworkUpdater;
 	}
 
 	public RegionalGeoUpdater getRegionalGeoUpdater() {
@@ -235,6 +240,9 @@ public class ConfigHandler {
 	}
 	public void setNetworkUpdater(final NetworkUpdater nu) {
 		this.networkUpdater = nu;
+	}
+	public void setDeepNetworkUpdater(final DeepNetworkUpdater dnu) {
+		this.deepNetworkUpdater = dnu;
 	}
 
 	public void setRegionalGeoUpdater(final RegionalGeoUpdater regionalGeoUpdater) {
