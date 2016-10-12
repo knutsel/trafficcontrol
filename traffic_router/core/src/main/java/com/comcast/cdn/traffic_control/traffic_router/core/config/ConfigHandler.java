@@ -36,6 +36,7 @@ import com.comcast.cdn.traffic_control.traffic_router.core.ds.SteeringWatcher;
 import com.comcast.cdn.traffic_control.traffic_router.core.loc.FederationsWatcher;
 import com.comcast.cdn.traffic_control.traffic_router.core.loc.GeolocationDatabaseUpdater;
 import com.comcast.cdn.traffic_control.traffic_router.core.loc.NetworkNode;
+//import com.comcast.cdn.traffic_control.traffic_router.core.loc.DeepNetworkNode;
 import com.comcast.cdn.traffic_control.traffic_router.core.loc.NetworkUpdater;
 import com.comcast.cdn.traffic_control.traffic_router.core.loc.DeepNetworkUpdater;
 import com.comcast.cdn.traffic_control.traffic_router.core.loc.RegionalGeoUpdater;
@@ -142,6 +143,7 @@ public class ConfigHandler {
 			try {
 				parseGeolocationConfig(config);
 				parseCoverageZoneNetworkConfig(config);
+				parseDeepCoverageZoneNetworkConfig(config);
 				parseRegionalGeoConfig(jo);
 
 				final CacheRegister cacheRegister = new CacheRegister();
@@ -200,6 +202,7 @@ public class ConfigHandler {
 				parseCacheConfig(jo.getJSONObject("contentServers"), cacheRegister);
 				parseMonitorConfig(jo.getJSONObject("monitors"));
 				NetworkNode.getInstance().clearCacheLocations();
+				NetworkNode.getInstance().setCacheRegister(cacheRegister);
 				federationsWatcher.configure(config);
 				steeringWatcher.configure(config);
 				steeringWatcher.setCacheRegister(cacheRegister);
@@ -517,6 +520,16 @@ public class ConfigHandler {
 		getNetworkUpdater().setDataBaseURL(
 				config.getString("coveragezone.polling.url"),
 				config.optLong("coveragezone.polling.interval")
+			);
+	}
+
+	private void parseDeepCoverageZoneNetworkConfig(final JSONObject config) throws JSONException {
+		LOGGER.info("DDC IGNORE ME here to please PMD - TODO JvD" + config.getString("coveragezone.polling.url"));
+		getDeepNetworkUpdater().setDataBaseURL(
+				//config.getString("coveragezone.polling.url"),
+				//config.optLong("coveragezone.polling.interval")
+				"http://ipcdn-tools-03.cdnlab.comcast.net/jvd/deepczf.json",
+				86400
 			);
 	}
 

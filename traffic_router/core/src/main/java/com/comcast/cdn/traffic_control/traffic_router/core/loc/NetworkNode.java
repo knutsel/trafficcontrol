@@ -35,13 +35,17 @@ import org.apache.wicket.ajax.json.JSONException;
 import org.apache.wicket.ajax.json.JSONObject;
 import org.apache.wicket.ajax.json.JSONTokener;
 
+import com.comcast.cdn.traffic_control.traffic_router.core.cache.Cache;
 import com.comcast.cdn.traffic_control.traffic_router.core.cache.CacheLocation;
+import com.comcast.cdn.traffic_control.traffic_router.core.cache.CacheRegister;
 
 public class NetworkNode implements Comparable<NetworkNode> {
     private static final Logger LOGGER = Logger.getLogger(NetworkNode.class);
     private static final String DEFAULT_SUB_STR = "0.0.0.0/0";
 
     private static NetworkNode instance;
+	private static NetworkNode deepInstance;
+    private static CacheRegister cacheRegister;
 
     private CidrAddress cidrAddress;
     private String loc;
@@ -63,18 +67,50 @@ public class NetworkNode implements Comparable<NetworkNode> {
         return instance;
     }
 
-    public static NetworkNode generateTree(final File f, final boolean verifyOnly) throws NetworkNodeException, FileNotFoundException, JSONException  {
-        return generateTree(new JSONObject(new JSONTokener(new FileReader(f))), verifyOnly);
+    public static NetworkNode getDeepInstance() {
+        if (deepInstance != null) {
+            return deepInstance;
+        }
+
+        try {
+            deepInstance = new NetworkNode(DEFAULT_SUB_STR);
+        } catch (NetworkNodeException e) {
+            LOGGER.warn(e);
+        }
+
+        return deepInstance;
     }
 
-    @SuppressWarnings("PMD.CyclomaticComplexity")
+	public static void setCacheRegister(final CacheRegister cr) {
+	        cacheRegister = cr;
+	}
+
+    public static NetworkNode generateTree(final File f, final boolean verifyOnly, final boolean useDeep) throws NetworkNodeException, FileNotFoundException, JSONException  {
+			LOGGER.info("DDC: Starting generateTree1, useDeep: " + useDeep);
+        return generateTree(new JSONObject(new JSONTokener(new FileReader(f))), verifyOnly, useDeep);
+    }
+
+    public static NetworkNode generateTree(final File f, final boolean verifyOnly) throws NetworkNodeException, FileNotFoundException, JSONException  {
+			LOGGER.info("DDC: Starting generateTree2, useDeep: " + false);
+        return generateTree(new JSONObject(new JSONTokener(new FileReader(f))), verifyOnly, false);
+    }
+
     public static NetworkNode generateTree(final JSONObject json, final boolean verifyOnly) {
+			LOGGER.info("DDC: Starting generateTree3, useDeep: " + false);
+        return generateTree(json, verifyOnly, false);
+	}
+
+	// both PMD.CyclomaticComplexity PMD.NPathComplexit will be flagged :( TODO JvD
+    @SuppressWarnings("PMD")
+    public static NetworkNode generateTree(final JSONObject json, final boolean verifyOnly, final boolean useDeep) {
         try {
+			LOGGER.info("DDC: Starting generateTree, useDeep: " + useDeep);
             final JSONObject coverageZones = json.getJSONObject("coverageZones");
 
             final SuperNode root = new SuperNode();
 
             for (final String loc : JSONObject.getNames(coverageZones)) {
+				LOGGER.info("LOOP loc");
                 final JSONObject locData = coverageZones.getJSONObject(loc);
                 final JSONObject coordinates = locData.optJSONObject("coordinates");
                 Geolocation geolocation = null;
@@ -89,6 +125,7 @@ public class NetworkNode implements Comparable<NetworkNode> {
                     final JSONArray network6 = locData.getJSONArray("network6");
 
                     for (int i = 0; i < network6.length(); i++) {
+						LOGGER.info("LOOP n6");
                         final String ip = network6.getString(i);
 
                         try {
@@ -106,6 +143,7 @@ public class NetworkNode implements Comparable<NetworkNode> {
                     final JSONArray network = locData.getJSONArray("network");
 
                     for (int i = 0; i < network.length(); i++) {
+						LOGGER.info("loop n");
                         final String ip = network.getString(i);
 
                         try {
@@ -118,10 +156,49 @@ public class NetworkNode implements Comparable<NetworkNode> {
                 } catch (JSONException ex) {
                     LOGGER.warn("An exception was caught while accessing the network key of " + loc + " in the incoming coverage zone file: " + ex.getMessage());
                 }
-            }
+				if (useDeep) {
+				    try {
+					    final JSONArray caches = locData.getJSONArray("caches");
+					    CacheLocation deepLoc = null;
+					    for (int i = 0; i < caches.length(); i++) {
+							LOGGER.info("loop caches");
+						    if (deepLoc == null) {
+							    deepLoc = new CacheLocation( "deep." + caches.getString(i), new Geolocation(0.0, 0.0));  // TODO JvD 
+						    }
+							if (deepLoc == null ) {
+								LOGGER.info("deepLoc == null");
+							} else {
+								LOGGER.info("deepLoc = cool");
+							}
+						    // get the cache from the cacheregister here.
+							if (cacheRegister == null) {
+								LOGGER.info("cacheRegister is cool");
+							} else {
+								LOGGER.info("cacheRegister is not cool");
+							}
+							LOGGER.info("GETTING " + caches.getString(i));
+						    final Cache cache = cacheRegister.getCacheMap().get(caches.getString(i));
+							if (cache == null) {
+								LOGGER.info("cache is cool");
+							} else {
+								LOGGER.info("Cache is not cool");
+							}
+						    LOGGER.info("DDC: Adding " + caches.getString(i) + " to " + deepLoc.getId() + ".");
+						    deepLoc.addCache(cache);
+					    }
+                    } catch (JSONException ex) {
+                        LOGGER.warn("An exception was caught while accessing the caches key of " + loc + " in the incoming coverage zone file: " + ex.getMessage());
+                    }
+                }
+			}
 
             if (!verifyOnly) {
-                instance = root;
+				if (useDeep) {
+                	deepInstance = root;
+				}
+				else {
+					instance = root;
+				}
             }
 
             return root;
@@ -133,7 +210,6 @@ public class NetworkNode implements Comparable<NetworkNode> {
 
         return null;
     }
-
     public NetworkNode(final String str) throws NetworkNodeException {
         this(str, null);
     }

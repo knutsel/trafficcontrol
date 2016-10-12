@@ -27,8 +27,8 @@ public class DeepNetworkUpdater extends AbstractServiceUpdater {
 		sourceCompressed = false;
 		tmpPrefix = "deepczf";
 		tmpSuffix = ".json";
-		dataBaseURL = "http://ipcdn-tools-03.cdnlab.comcast.net/jvd/deepczf.json"; // TODO JvD
-		databaseName = "Boo"; // TODO JvD
+		//dataBaseURL = "http://ipcdn-tools-03.cdnlab.comcast.net/jvd/deepczf.json"; // TODO JvD
+		//databaseName = "Boo"; // TODO JvD
 	}
 
 	@Override
@@ -39,7 +39,7 @@ public class DeepNetworkUpdater extends AbstractServiceUpdater {
 			return false;
 		}
 
-		return DeepNetworkNode.generateTree(existingDB, false) != null;
+		return NetworkNode.generateTree(existingDB, false, true) != null;
 	}
 
 	@Override
@@ -48,7 +48,7 @@ public class DeepNetworkUpdater extends AbstractServiceUpdater {
 			return false;
 		}
 
-		return DeepNetworkNode.generateTree(dbFile, true) != null;
+		return NetworkNode.generateTree(dbFile, true, true) != null;
 	}
 
 }
