@@ -52,7 +52,7 @@ import com.comcast.cdn.traffic_control.traffic_router.core.router.StatTracker.Tr
 import com.comcast.cdn.traffic_control.traffic_router.core.util.StringProtector;
 
 
-@SuppressWarnings({"PMD.TooManyFields","PMD.CyclomaticComplexity"})
+@SuppressWarnings({"PMD.TooManyFields", "PMD.CyclomaticComplexity"})
 public class DeliveryService {
 	protected static final Logger LOGGER = Logger.getLogger(DeliveryService.class);
 	private final String id;
@@ -115,14 +115,14 @@ public class DeliveryService {
 		this.bypassDestination = dsJo.optJSONObject("bypassDestination");
 		this.domains = dsJo.optJSONArray("domains");
 		this.soa = dsJo.optJSONObject("soa");
-		if(dsJo.has("appendQueryString")) {
+		if (dsJo.has("appendQueryString")) {
 			this.shouldAppendQueryString = dsJo.optBoolean("appendQueryString");
 		} else {
 			this.shouldAppendQueryString = true;
 		}
 		// missLocation: {lat: , long: }
 		final JSONObject mlJo = dsJo.optJSONObject("missLocation");
-		if(mlJo != null) {
+		if (mlJo != null) {
 			missLocation = new Geolocation(mlJo.optDouble("lat"), mlJo.optDouble("long"));
 		} else {
 			missLocation = null;
@@ -183,24 +183,24 @@ public class DeliveryService {
 	}
 
 	private boolean isLocationBlocked(final Geolocation clientLocation) {
-		if(geoEnabled == null || geoEnabled.length() == 0) { return false; }
+		if (geoEnabled == null || geoEnabled.length() == 0) { return false; }
 
 		final Map<String, String> locData = clientLocation.getProperties();
-		for(int i = 0; i < geoEnabled.length(); i++) {
+		for (int i = 0; i < geoEnabled.length(); i++) {
 			boolean match = true;
 			try {
 				final JSONObject constraint = geoEnabled.optJSONObject(i);
 				for (final String t : JSONObject.getNames(constraint)) {
 					final String v = constraint.getString(t);
 					final String data = locData.get(t);
-					if(!v.equalsIgnoreCase(data)) {
+					if (!v.equalsIgnoreCase(data)) {
 						match = false;
 						break;
 					}
 				}
-				if(match) { return false; }
+				if (match) { return false; }
 			} catch (JSONException e) {
-				LOGGER.warn(e,e);
+				LOGGER.warn(e, e);
 			}
 		}
 		return true;
@@ -211,26 +211,26 @@ public class DeliveryService {
 	}
 
 	public URL getFailureHttpResponse(final HTTPRequest request, final Track track) throws MalformedURLException {
-		if(bypassDestination == null) {
+		if (bypassDestination == null) {
 			track.setResult(ResultType.MISS);
 			track.setResultDetails(ResultDetails.DS_NO_BYPASS);
 			return null;
 		}
 		track.setResult(ResultType.DS_REDIRECT);
 		final JSONObject httpJo = bypassDestination.optJSONObject("HTTP");
-		if(httpJo == null) {
+		if (httpJo == null) {
 			track.setResult(ResultType.MISS);
 			track.setResultDetails(ResultDetails.DS_NO_BYPASS);
 			return null;
 		}
 		final String fqdn = httpJo.optString("fqdn");
-		if(fqdn == null) {
+		if (fqdn == null) {
 			track.setResult(ResultType.MISS);
 			track.setResultDetails(ResultDetails.DS_NO_BYPASS);
 			return null;
 		}
 		int port = request.isSecure() ? 443 : 80;
-		if(httpJo.has("port")) {
+		if (httpJo.has("port")) {
 			port = httpJo.optInt("port");
 		}
 		return new URL(createURIString(request, fqdn, port, null));
@@ -278,8 +278,8 @@ public class DeliveryService {
 			uri.append('?').append(request.getQueryString());
 			queryAppended = true;
 		}
-		if(tinfo != null) {
-			if(queryAppended) {
+		if (tinfo != null) {
+			if (queryAppended) {
 				uri.append('&');
 			} else {
 				uri.append('?');
@@ -312,7 +312,7 @@ public class DeliveryService {
 		return null;
 	}
 	public List<InetRecord> getFailureDnsResponse(final DNSRequest request, final Track track) {
-		if(bypassDestination == null) {
+		if (bypassDestination == null) {
 			track.setResult(ResultType.MISS);
 			track.setResultDetails(ResultDetails.DS_NO_BYPASS);
 			return null;
@@ -368,7 +368,7 @@ public class DeliveryService {
 			}
 		} catch (Exception e) {
 			redirectInetRecords = null;
-			LOGGER.warn(e,e);
+			LOGGER.warn(e, e);
 		}
 
 		return redirectInetRecords;
@@ -386,7 +386,7 @@ public class DeliveryService {
 		this.isDns = isDns;
 	}
 
-	public static enum DeepCacheType { 
+	public static enum DeepCacheType {
 		DC_NEVER, DC_ALWAYS, DC_POPULAR
 	}
 
@@ -420,7 +420,7 @@ public class DeliveryService {
 
 			return getEncryptedTrans(type, ipBytes);
 		} catch (Exception e) {
-			LOGGER.warn(e,e);
+			LOGGER.warn(e, e);
 		}
 
 		return null;
@@ -435,7 +435,7 @@ public class DeliveryService {
 				return null;
 			}
 
-			ipBytes = new byte[]{0,0,0,0};
+			ipBytes = new byte[] {0, 0, 0, 0};
 		}
 
 		return ipBytes;
@@ -443,7 +443,7 @@ public class DeliveryService {
 
 	private String getEncryptedTrans(final TransInfoType type, final byte[] ipBytes) throws IOException, GeneralSecurityException {
 		try (final ByteArrayOutputStream baos = new ByteArrayOutputStream();
-		     final DataOutputStream dos = new DataOutputStream(baos)) {
+			        final DataOutputStream dos = new DataOutputStream(baos)) {
 
 			dos.write(ipBytes);
 
@@ -459,13 +459,13 @@ public class DeliveryService {
 	}
 
 	private String getProp(final String key, final String d) {
-		if(props == null || !props.has(key)) {
+		if (props == null || !props.has(key)) {
 			return d;
 		}
 		return props.optString(key);
 	}
 	private int getProp(final String key, final int d) {
-		if(props == null || !props.has(key)) {
+		if (props == null || !props.has(key)) {
 			return d;
 		}
 		return props.optInt(key);
@@ -474,13 +474,13 @@ public class DeliveryService {
 	static StringProtector stringProtector = null;
 	private static StringProtector getStringProtector() {
 		try {
-			synchronized(LOGGER) {
-				if(stringProtector == null) {
+			synchronized (LOGGER) {
+				if (stringProtector == null) {
 					stringProtector = new StringProtector("HajUsyac7"); // random passwd
 				}
 			}
 		} catch (GeneralSecurityException e) {
-			LOGGER.warn(e,e);
+			LOGGER.warn(e, e);
 		}
 		return stringProtector;
 	}
@@ -493,11 +493,11 @@ public class DeliveryService {
 	private boolean isAvailable = true;
 	private JSONArray disabledLocations;
 	public void setState(final JSONObject state) {
-		if(state == null) {
+		if (state == null) {
 			isAvailable = true;
 			return;
 		}
-		if(state.has("isAvailable")) {
+		if (state.has("isAvailable")) {
 			isAvailable = state.optBoolean("isAvailable");
 		}
 		// disabled locations
@@ -509,16 +509,16 @@ public class DeliveryService {
 	}
 
 	public boolean isLocationAvailable(final CacheLocation cl) {
-		if(cl==null) {
+		if (cl == null) {
 			return false;
 		}
 		final JSONArray dls = this.disabledLocations;
-		if(dls == null) {
+		if (dls == null) {
 			return true;
 		}
 		final String locStr = cl.getId();
-		for(int i = 0; i < dls.length(); i++) {
-			if(locStr.equals(dls.optString(i))) {
+		for (int i = 0; i < dls.length(); i++) {
+			if (locStr.equals(dls.optString(i))) {
 				return false;
 			}
 		}
@@ -526,11 +526,11 @@ public class DeliveryService {
 	}
 
 	public int getLocationLimit() {
-		return getProp("locationFailoverLimit",0);
+		return getProp("locationFailoverLimit", 0);
 	}
 
 	public int getMaxDnsIps() {
-		return getProp("maxDnsIpsForLocation",0);
+		return getProp("maxDnsIpsForLocation", 0);
 	}
 
 	@JsonIgnore
