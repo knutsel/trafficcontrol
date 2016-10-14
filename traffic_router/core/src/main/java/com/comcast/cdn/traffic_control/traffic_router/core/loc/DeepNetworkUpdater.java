@@ -27,8 +27,6 @@ public class DeepNetworkUpdater extends AbstractServiceUpdater {
 		sourceCompressed = false;
 		tmpPrefix = "deepczf";
 		tmpSuffix = ".json";
-		//dataBaseURL = "http://ipcdn-tools-03.cdnlab.comcast.net/jvd/deepczf.json"; // TODO JvD
-		//databaseName = "Boo"; // TODO JvD
 	}
 
 	@Override

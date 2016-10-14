@@ -74,7 +74,7 @@ public abstract class AbstractServiceUpdater {
 	 * @return the pollingInterval
 	 */
 	public long getPollingInterval() {
-		if(pollingInterval == 0) { return 10000; }
+		if (pollingInterval == 0) { return 10000; }
 		return pollingInterval;
 	}
 
@@ -86,14 +86,14 @@ public abstract class AbstractServiceUpdater {
 				updateDatabase();
 			} catch (Throwable t) {
 				// Catching Throwable prevents this Service Updater thread from silently dying
-				LOGGER.error( "[" + getClass().getSimpleName() +"] Failed updating database!", t);
+				LOGGER.error( "[" + getClass().getSimpleName() + "] Failed updating database!", t);
 			}
 		}
 	};
 
 	public void init() {
 		final long pollingInterval = getPollingInterval();
-		
+
 		final Date nextFetchDate = new Date(System.currentTimeMillis() + pollingInterval);
 		LOGGER.info("[" + getClass().getSimpleName() + "] Fetching external resource " + dataBaseURL + " at interval: " + pollingInterval + " : " + TimeUnit.MILLISECONDS + " next update occurrs at " + nextFetchDate);
 		scheduledService = executorService.scheduleWithFixedDelay(updater, initialDelay, pollingInterval, TimeUnit.MILLISECONDS);
@@ -202,15 +202,15 @@ public abstract class AbstractServiceUpdater {
 	}
 
 	public void setDataBaseURL(final String url, final long refresh) {
-		if (refresh !=0 && refresh != pollingInterval) {
+		if (refresh != 0 && refresh != pollingInterval) {
 
 			this.pollingInterval = refresh;
-			LOGGER.info("[" + getClass().getSimpleName() + "] Restarting schedule for " + url + " with interval: "+refresh);
+			LOGGER.info("[" + getClass().getSimpleName() + "] Restarting schedule for " + url + " with interval: " + refresh);
 			stopServiceUpdater();
 			init();
 		}
 
-		if ((url != null) && !url.equals(dataBaseURL) || (refresh!=0 && refresh!=pollingInterval)) {
+		if ((url != null) && !url.equals(dataBaseURL) || (refresh != 0 && refresh != pollingInterval)) {
 			this.dataBaseURL = url;
 			this.setLoaded(false);
 			new Thread(updater).start();
@@ -242,8 +242,8 @@ public abstract class AbstractServiceUpdater {
 	}
 
 	boolean filesEqual(final File a, final File b) throws IOException {
-		if(!a.exists() && !b.exists()) { return true; }
-		if(!a.exists() || !b.exists()) { return false; }
+		if (!a.exists() && !b.exists()) { return true; }
+		if (!a.exists() || !b.exists()) { return false; }
 		if (a.isDirectory() && b.isDirectory()) {
 			return compareDirectories(a, b);
 		}
@@ -376,7 +376,7 @@ public abstract class AbstractServiceUpdater {
 
 	private boolean useModifiedTimestamp(final File existingDb) {
 		return existingDb != null && existingDb.exists() && existingDb.lastModified() > 0
-				&& (!existingDb.isDirectory() || existingDb.listFiles().length > 0);
+		       && (!existingDb.isDirectory() || existingDb.listFiles().length > 0);
 	}
 
 	protected boolean needsUpdating(final File existingDB) {

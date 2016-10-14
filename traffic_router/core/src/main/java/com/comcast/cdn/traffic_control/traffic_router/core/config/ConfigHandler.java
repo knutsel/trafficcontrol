@@ -36,7 +36,6 @@ import com.comcast.cdn.traffic_control.traffic_router.core.ds.SteeringWatcher;
 import com.comcast.cdn.traffic_control.traffic_router.core.loc.FederationsWatcher;
 import com.comcast.cdn.traffic_control.traffic_router.core.loc.GeolocationDatabaseUpdater;
 import com.comcast.cdn.traffic_control.traffic_router.core.loc.NetworkNode;
-//import com.comcast.cdn.traffic_control.traffic_router.core.loc.DeepNetworkNode;
 import com.comcast.cdn.traffic_control.traffic_router.core.loc.NetworkUpdater;
 import com.comcast.cdn.traffic_control.traffic_router.core.loc.DeepNetworkUpdater;
 import com.comcast.cdn.traffic_control.traffic_router.core.loc.RegionalGeoUpdater;
@@ -124,7 +123,7 @@ public class ConfigHandler {
 		}
 
 		Date date;
-		synchronized(configSync) {
+		synchronized (configSync) {
 			final JSONObject jo = new JSONObject(jsonStr);
 			final JSONObject config = jo.getJSONObject("config");
 			final JSONObject stats = jo.getJSONObject("stats");
@@ -260,7 +259,7 @@ public class ConfigHandler {
 	 * @param stats
 	 *            the {@link TrafficRouterConfiguration} stats section
 	 *
-	 * @throws JSONException 
+	 * @throws JSONException
 	 */
 	private void parseTrafficOpsConfig(final JSONObject config, final JSONObject stats) throws JSONException {
 		if (stats.has("tm_host")) {
@@ -280,18 +279,18 @@ public class ConfigHandler {
 	 *
 	 * @param trConfig
 	 *            the {@link TrafficRouterConfiguration}
-	 * @throws JSONException 
+	 * @throws JSONException
 	 */
 	@SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.AvoidDeeplyNestedIfStmts"})
 	private void parseCacheConfig(final JSONObject contentServers, final CacheRegister cacheRegister) throws JSONException, ParseException {
-		final Map<String,Cache> map = new HashMap<String,Cache>();
+		final Map<String, Cache> map = new HashMap<String, Cache>();
 		final Map<String, List<String>> statMap = new HashMap<String, List<String>>();
 		for (final String node : JSONObject.getNames(contentServers)) {
 			final JSONObject jo = contentServers.getJSONObject(node);
 			final CacheLocation loc = cacheRegister.getCacheLocation(jo.getString("locationId"));
 			if (loc != null) {
 				String hashId = node;
-				if(jo.has("hashId")) {
+				if (jo.has("hashId")) {
 					hashId = jo.optString("hashId");
 				}
 				final Cache cache = new Cache(node, hashId, jo.optInt("hashCount"));
@@ -304,10 +303,10 @@ public class ConfigHandler {
 				try {
 					cache.setIpAddress(ip, ip6, 0);
 				} catch (UnknownHostException e) {
-					LOGGER.warn(e+" : "+ip);
+					LOGGER.warn(e + " : " + ip);
 				}
 
-				if(jo.has(deliveryServicesKey)) {
+				if (jo.has(deliveryServicesKey)) {
 					final List<DeliveryServiceReference> references = new ArrayList<Cache.DeliveryServiceReference>();
 					final JSONObject dsJos = jo.optJSONObject(deliveryServicesKey);
 					for (final String ds : JSONObject.getNames(dsJos)) {
@@ -370,7 +369,7 @@ public class ConfigHandler {
 	}
 
 	private Map<String, DeliveryService> parseDeliveryServiceConfig(final JSONObject allDeliveryServices) throws JSONException {
-		final Map<String,DeliveryService> deliveryServiceMap = new HashMap<>();
+		final Map<String, DeliveryService> deliveryServiceMap = new HashMap<>();
 
 		for (final String deliveryServiceId : JSONObject.getNames(allDeliveryServices)) {
 			final JSONObject deliveryServiceJson = allDeliveryServices.getJSONObject(deliveryServiceId);
@@ -473,10 +472,10 @@ public class ConfigHandler {
 	/**
 	 * Parses the geolocation database configuration and updates the database if the URL has
 	 * changed.
-	 * 
+	 *
 	 * @param config
 	 *            the {@link TrafficRouterConfiguration}
-	 * @throws JSONException 
+	 * @throws JSONException
 	 */
 	private void parseGeolocationConfig(final JSONObject config) throws JSONException {
 		String pollingUrlKey = "geolocation.polling.url";
@@ -486,8 +485,8 @@ public class ConfigHandler {
 		}
 
 		getGeolocationDatabaseUpdater().setDataBaseURL(
-			config.getString(pollingUrlKey),
-			config.optLong("geolocation.polling.interval")
+		    config.getString(pollingUrlKey),
+		    config.optLong("geolocation.polling.interval")
 		);
 
 		if (config.has("neustar.polling.url")) {
@@ -516,25 +515,25 @@ public class ConfigHandler {
 	 *
 	 * @param trConfig
 	 *            the {@link TrafficRouterConfiguration}
-	 * @throws JSONException 
+	 * @throws JSONException
 	 */
 	private void parseCoverageZoneNetworkConfig(final JSONObject config) throws JSONException {
 		getNetworkUpdater().setDataBaseURL(
-				config.getString("coveragezone.polling.url"),
-				config.optLong("coveragezone.polling.interval")
-			);
+		    config.getString("coveragezone.polling.url"),
+		    config.optLong("coveragezone.polling.interval")
+		);
 	}
 
 	private void parseDeepCoverageZoneNetworkConfig(final JSONObject config) throws JSONException {
 		LOGGER.info("DDC IGNORE ME here to please PMD - TODO JvD" + config.getString("coveragezone.polling.url"));
 		getDeepNetworkUpdater().setDataBaseURL(
-				// TODO JvD - hook up paramaters
-				//config.getString("coveragezone.polling.url"),
-				//config.optLong("coveragezone.polling.interval")
-				"http://ipcdn-tools-03.cdnlab.comcast.net/jvd/deepczf.json",
-				86400000,
-				10000
-			);
+		    // TODO JvD - hook up paramaters
+		    //config.getString("coveragezone.polling.url"),
+		    //config.optLong("coveragezone.polling.interval")
+		    "http://ipcdn-tools-03.cdnlab.comcast.net/jvd/deepczf.json",
+		    86400000,
+		    10000
+		);
 	}
 
 	private void parseRegionalGeoConfig(final JSONObject jo) throws JSONException {
@@ -551,7 +550,7 @@ public class ConfigHandler {
 			final JSONObject dss = jo.getJSONObject(deliveryServicesKey);
 			for (final String ds : JSONObject.getNames(dss)) {
 				if (dss.getJSONObject(ds).has("regionalGeoBlocking") &&
-						dss.getJSONObject(ds).getString("regionalGeoBlocking").equals("true")) {
+				        dss.getJSONObject(ds).getString("regionalGeoBlocking").equals("true")) {
 					final long interval = config.optLong("regional_geoblock.polling.interval");
 					getRegionalGeoUpdater().setDataBaseURL(url, interval);
 					return;
@@ -570,7 +569,7 @@ public class ConfigHandler {
 	 *            the TrafficRouterConfiguration
 	 * @return the {@link Map}, empty if there are no Locations that have both a latitude and
 	 *         longitude specified
-	 * @throws JSONException 
+	 * @throws JSONException
 	 */
 	private void parseLocationConfig(final JSONObject locationsJo, final CacheRegister cacheRegister) throws JSONException {
 		final Set<CacheLocation> locations = new HashSet<CacheLocation>(locationsJo.length());
@@ -579,7 +578,7 @@ public class ConfigHandler {
 			try {
 				locations.add(new CacheLocation(loc, new Geolocation(jo.getDouble("latitude"), jo.getDouble("longitude"))));
 			} catch (JSONException e) {
-				LOGGER.warn(e,e);
+				LOGGER.warn(e, e);
 			}
 		}
 		cacheRegister.setConfiguredLocations(locations);
@@ -660,8 +659,7 @@ public class ConfigHandler {
 		for (int i = 0; i < requestHeaders.length(); i++) {
 			try {
 				headers.add(requestHeaders.getString(i));
-			}
-			catch (JSONException e) {
+			} catch (JSONException e) {
 				LOGGER.warn("Failed parsing request header from config at position " + i, e);
 			}
 		}

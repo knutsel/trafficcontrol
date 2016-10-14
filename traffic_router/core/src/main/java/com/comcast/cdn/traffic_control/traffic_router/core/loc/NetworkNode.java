@@ -45,7 +45,7 @@ public class NetworkNode implements Comparable<NetworkNode> {
     private static final String DEFAULT_SUB_STR = "0.0.0.0/0";
 
     private static NetworkNode instance;
-	private static NetworkNode deepInstance;
+    private static NetworkNode deepInstance;
 
     private static CacheRegister cacheRegister; // JvD
 
@@ -53,7 +53,7 @@ public class NetworkNode implements Comparable<NetworkNode> {
     private String loc;
     private CacheLocation cacheLocation = null;
     private Geolocation geolocation = null;
-    protected Map<NetworkNode,NetworkNode> children;
+    protected Map<NetworkNode, NetworkNode> children;
 
     public static NetworkNode getInstance() {
         if (instance != null) {
@@ -83,31 +83,30 @@ public class NetworkNode implements Comparable<NetworkNode> {
         return deepInstance;
     }
 
-	public static void setCacheRegister(final CacheRegister cr) {
-		LOGGER.info("DDC: setting CR");
-	        cacheRegister = cr;
-	}
+    public static void setCacheRegister(final CacheRegister cr) {
+        LOGGER.info("DDC: setting CR");
+        cacheRegister = cr;
+    }
 
     public static NetworkNode generateTree(final File f, final boolean verifyOnly, final boolean useDeep) throws NetworkNodeException, FileNotFoundException, JSONException  {
-			LOGGER.info("DDC: Starting generateTree1, useDeep: " + useDeep);
+        LOGGER.info("DDC: Starting generateTree1, useDeep: " + useDeep);
         return generateTree(new JSONObject(new JSONTokener(new FileReader(f))), verifyOnly, useDeep);
     }
 
     public static NetworkNode generateTree(final File f, final boolean verifyOnly) throws NetworkNodeException, FileNotFoundException, JSONException  {
-			LOGGER.info("DDC: Starting generateTree2, useDeep: " + false);
+        LOGGER.info("DDC: Starting generateTree2, useDeep: " + false);
         return generateTree(new JSONObject(new JSONTokener(new FileReader(f))), verifyOnly, false);
     }
 
     public static NetworkNode generateTree(final JSONObject json, final boolean verifyOnly) {
-			LOGGER.info("DDC: Starting generateTree3, useDeep: " + false);
+        LOGGER.info("DDC: Starting generateTree3, useDeep: " + false);
         return generateTree(json, verifyOnly, false);
-	}
+    }
 
-	// both PMD.CyclomaticComplexity PMD.NPathComplexity will be flagged :( TODO JvD
-    @SuppressWarnings("PMD")
+    @SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.NPathComplexity"})
     public static NetworkNode generateTree(final JSONObject json, final boolean verifyOnly, final boolean useDeep) {
         try {
-			LOGGER.info("DDC: Starting generateTree, useDeep: " + useDeep);
+            LOGGER.info("DDC: Starting generateTree, useDeep: " + useDeep);
             final JSONObject coverageZones = json.getJSONObject("coverageZones");
 
             final SuperNode root = new SuperNode();
@@ -156,42 +155,41 @@ public class NetworkNode implements Comparable<NetworkNode> {
                 } catch (JSONException ex) {
                     LOGGER.warn("An exception was caught while accessing the network key of " + loc + " in the incoming coverage zone file: " + ex.getMessage());
                 }
-				if (useDeep) {
-				    try {
-					    final JSONArray caches = locData.getJSONArray("caches");
-					    CacheLocation deepLoc = null;
-					    for (int i = 0; i < caches.length(); i++) {
-						    if (deepLoc == null) {
-							    deepLoc = new CacheLocation( "deep." + loc, new Geolocation(0.0, 0.0));  // TODO JvD 
-						    }
-						    // Get the cache from the cacheregister here - don't create a new cache due to the deep file, only reuse the 
-							// ones we already know about.
-						    final Cache cache = cacheRegister.getCacheMap().get(caches.getString(i));
-							if (cache == null) {
-								LOGGER.error("DDC: deep cache entry " + caches.getString(i) + " not found in crconfig server list!");
-							} else {
-						    	LOGGER.info("DDC: Adding " + caches.getString(i) + " to " + deepLoc.getId() + ".");
-						    	deepLoc.addCache(cache);
-							}
-					    }
+                if (useDeep) {
+                    try {
+                        final JSONArray caches = locData.getJSONArray("caches");
+                        CacheLocation deepLoc = null;
+                        for (int i = 0; i < caches.length(); i++) {
+                            if (deepLoc == null) {
+                                deepLoc = new CacheLocation( "deep." + loc, new Geolocation(0.0, 0.0));  // TODO JvD
+                            }
+                            // Get the cache from the cacheregister here - don't create a new cache due to the deep file, only reuse the
+                            // ones we already know about.
+                            final Cache cache = cacheRegister.getCacheMap().get(caches.getString(i));
+                            if (cache == null) {
+                                LOGGER.error("DDC: deep cache entry " + caches.getString(i) + " not found in crconfig server list!");
+                            } else {
+                                LOGGER.info("DDC: Adding " + caches.getString(i) + " to " + deepLoc.getId() + ".");
+                                deepLoc.addCache(cache);
+                            }
+                        }
                     } catch (JSONException ex) {
                         LOGGER.warn("An exception was caught while accessing the caches key of " + loc + " in the incoming coverage zone file: " + ex.getMessage());
                     }
                 }
-			}
+            }
 
             if (!verifyOnly) {
-				if (useDeep) {
-                	deepInstance = root;
-				}
-				else {
-					instance = root;
-				}
+                if (useDeep) {
+                    deepInstance = root;
+                } else {
+                    instance = root;
+                }
             }
 
             return root;
         } catch (JSONException e) {
-            LOGGER.warn(e,e);
+            LOGGER.warn(e, e);
         } catch (NetworkNodeException ex) {
             LOGGER.fatal(ex, ex);
         }
@@ -235,16 +233,16 @@ public class NetworkNode implements Comparable<NetworkNode> {
     }
 
     public Boolean add(final NetworkNode nn) {
-        synchronized(this) {
+        synchronized (this) {
             if (children == null) {
-                children = new TreeMap<NetworkNode,NetworkNode>();
+                children = new TreeMap<NetworkNode, NetworkNode>();
             }
 
             return add(children, nn);
         }
     }
 
-    protected Boolean add(final Map<NetworkNode,NetworkNode> children, final NetworkNode networkNode) {
+    protected Boolean add(final Map<NetworkNode, NetworkNode> children, final NetworkNode networkNode) {
         if (compareTo(networkNode) != 0) {
             return false;
         }
@@ -309,7 +307,7 @@ public class NetworkNode implements Comparable<NetworkNode> {
     }
 
     public void clearCacheLocations() {
-        synchronized(this) {
+        synchronized (this) {
             cacheLocation = null;
 
             if (this instanceof SuperNode) {
@@ -338,8 +336,8 @@ public class NetworkNode implements Comparable<NetworkNode> {
         }
 
         public Boolean add6(final NetworkNode nn) {
-            if(children6 == null) {
-                children6 = new TreeMap<NetworkNode,NetworkNode>();
+            if (children6 == null) {
+                children6 = new TreeMap<NetworkNode, NetworkNode>();
             }
             return add(children6, nn);
         }
@@ -377,7 +375,7 @@ public class NetworkNode implements Comparable<NetworkNode> {
         try {
             str = InetAddress.getByAddress(cidrAddress.getHostBytes()).toString().replace("/", "");
         } catch (UnknownHostException e) {
-            LOGGER.warn(e,e);
+            LOGGER.warn(e, e);
         }
 
         return "[" + str + "/" + cidrAddress.getNetmaskLength() + "] - location:" + this.getLoc();
