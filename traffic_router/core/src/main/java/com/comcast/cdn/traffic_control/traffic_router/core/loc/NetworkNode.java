@@ -25,6 +25,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
+//import java.util.Iterator;
 
 import com.comcast.cdn.traffic_control.traffic_router.core.util.CidrAddress;
 import com.comcast.cdn.traffic_control.traffic_router.geolocation.Geolocation;
@@ -45,7 +46,8 @@ public class NetworkNode implements Comparable<NetworkNode> {
 
     private static NetworkNode instance;
 	private static NetworkNode deepInstance;
-    private static CacheRegister cacheRegister;
+
+    private static CacheRegister cacheRegister; // JvD
 
     private CidrAddress cidrAddress;
     private String loc;
@@ -82,6 +84,7 @@ public class NetworkNode implements Comparable<NetworkNode> {
     }
 
 	public static void setCacheRegister(final CacheRegister cr) {
+		LOGGER.info("DDC: setting CR");
 	        cacheRegister = cr;
 	}
 
@@ -110,7 +113,6 @@ public class NetworkNode implements Comparable<NetworkNode> {
             final SuperNode root = new SuperNode();
 
             for (final String loc : JSONObject.getNames(coverageZones)) {
-				LOGGER.info("LOOP loc");
                 final JSONObject locData = coverageZones.getJSONObject(loc);
                 final JSONObject coordinates = locData.optJSONObject("coordinates");
                 Geolocation geolocation = null;
@@ -125,7 +127,6 @@ public class NetworkNode implements Comparable<NetworkNode> {
                     final JSONArray network6 = locData.getJSONArray("network6");
 
                     for (int i = 0; i < network6.length(); i++) {
-						LOGGER.info("LOOP n6");
                         final String ip = network6.getString(i);
 
                         try {
@@ -143,7 +144,6 @@ public class NetworkNode implements Comparable<NetworkNode> {
                     final JSONArray network = locData.getJSONArray("network");
 
                     for (int i = 0; i < network.length(); i++) {
-						LOGGER.info("loop n");
                         final String ip = network.getString(i);
 
                         try {
@@ -163,28 +163,16 @@ public class NetworkNode implements Comparable<NetworkNode> {
 					    for (int i = 0; i < caches.length(); i++) {
 							LOGGER.info("loop caches");
 						    if (deepLoc == null) {
-							    deepLoc = new CacheLocation( "deep." + caches.getString(i), new Geolocation(0.0, 0.0));  // TODO JvD 
+							    deepLoc = new CacheLocation( "deep." + loc, new Geolocation(0.0, 0.0));  // TODO JvD 
 						    }
-							if (deepLoc == null ) {
-								LOGGER.info("deepLoc == null");
-							} else {
-								LOGGER.info("deepLoc = cool");
-							}
 						    // get the cache from the cacheregister here.
-							if (cacheRegister == null) {
-								LOGGER.info("cacheRegister is cool");
-							} else {
-								LOGGER.info("cacheRegister is not cool");
-							}
-							LOGGER.info("GETTING " + caches.getString(i));
 						    final Cache cache = cacheRegister.getCacheMap().get(caches.getString(i));
 							if (cache == null) {
-								LOGGER.info("cache is cool");
+								LOGGER.error("DDC: deep cache entry " + caches.getString(i) + " not found in crconfig server list!");
 							} else {
-								LOGGER.info("Cache is not cool");
+						    	LOGGER.info("DDC: Adding " + caches.getString(i) + " to " + deepLoc.getId() + ".");
+						    	deepLoc.addCache(cache);
 							}
-						    LOGGER.info("DDC: Adding " + caches.getString(i) + " to " + deepLoc.getId() + ".");
-						    deepLoc.addCache(cache);
 					    }
                     } catch (JSONException ex) {
                         LOGGER.warn("An exception was caught while accessing the caches key of " + loc + " in the incoming coverage zone file: " + ex.getMessage());

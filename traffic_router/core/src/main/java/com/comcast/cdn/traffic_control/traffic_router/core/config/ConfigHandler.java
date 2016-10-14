@@ -202,7 +202,8 @@ public class ConfigHandler {
 				parseCacheConfig(jo.getJSONObject("contentServers"), cacheRegister);
 				parseMonitorConfig(jo.getJSONObject("monitors"));
 				NetworkNode.getInstance().clearCacheLocations();
-				NetworkNode.getInstance().setCacheRegister(cacheRegister);
+				LOGGER.info("CONFIG: Seeting NetworkNode cr");
+				NetworkNode.setCacheRegister(cacheRegister);
 				federationsWatcher.configure(config);
 				steeringWatcher.configure(config);
 				steeringWatcher.setCacheRegister(cacheRegister);
@@ -364,6 +365,7 @@ public class ConfigHandler {
 			}
 		}
 		cacheRegister.setCacheMap(map);
+		LOGGER.info("DDC: Seeting CacheMap in the cacheregister");
 		statTracker.initialize(statMap, cacheRegister);
 	}
 
