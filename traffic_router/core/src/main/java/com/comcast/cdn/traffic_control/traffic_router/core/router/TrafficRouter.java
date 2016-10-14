@@ -253,6 +253,7 @@ public class TrafficRouter {
 			useDeepCZ = true;
 		}
 
+		LOGGER.info("useDeepCZ == " + useDeepCZ);
 		final CacheLocation cacheLocation = getCoverageZoneCacheLocation(request.getClientIP(), ds, useDeepCZ);
 		List<Cache>caches = selectCachesByCZ(ds, cacheLocation, track);
 
@@ -516,6 +517,11 @@ public class TrafficRouter {
 	}
 
 	protected NetworkNode getDeepNetworkNode(final String ip) { 
+		try {
+			return NetworkNode.getDeepInstance().getNetwork(ip);
+		} catch (NetworkNodeException e) {
+			LOGGER.warn(e);
+		}
 		return null;
 	}
 
@@ -535,21 +541,25 @@ public class TrafficRouter {
 	public CacheLocation getCoverageZoneCacheLocation(final String ip, final String deliveryServiceId, final boolean useDeep) {
 		NetworkNode networkNode;
 	   if (useDeep) {
-	   		networkNode = getNetworkNode(ip);
+	   		networkNode = getDeepNetworkNode(ip);
 	   } else {
-		   networkNode = getDeepNetworkNode(ip);
+		   networkNode = getNetworkNode(ip);
 	   }
 
 		if (networkNode == null) {
+            LOGGER.info("DDC networkNode == null");
 			return null;
 		}
 
+        LOGGER.info("DDC networkNode != null");
 		CacheLocation cacheLocation = networkNode.getCacheLocation();
 
 		if (cacheLocation != null) {
+            LOGGER.info("DDC cacheLocation != null!");
 			return cacheLocation;
 		}
 
+        LOGGER.info("DDC cacheLocation == null!");
 		if (networkNode.getLoc() == null) {
 			return null;
 		}

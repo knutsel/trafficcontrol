@@ -49,7 +49,7 @@ public abstract class AbstractServiceUpdater {
 	protected String databaseName;
 	protected ScheduledExecutorService executorService;
 	private long pollingInterval;
-	private long initialDelay = 0;
+	private long initialDelay = -1;
 	protected boolean loaded = false;
 	protected ScheduledFuture<?> scheduledService;
 	private TrafficRouterManager trafficRouterManager;
@@ -92,7 +92,10 @@ public abstract class AbstractServiceUpdater {
 	};
 
 	public void init() {
-		final long pollingInterval = getPollingInterval();
+		final long pollingInterval = getPollingInterval(); 
+		if (initialDelay == -1) {
+			initialDelay = pollingInterval;
+		}
 
 		final Date nextFetchDate = new Date(System.currentTimeMillis() + pollingInterval);
 		LOGGER.info("[" + getClass().getSimpleName() + "] Fetching external resource " + dataBaseURL + " at interval: " + pollingInterval + " : " + TimeUnit.MILLISECONDS + " next update occurrs at " + nextFetchDate);

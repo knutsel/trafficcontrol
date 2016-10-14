@@ -121,44 +121,10 @@ public class NetworkNode implements Comparable<NetworkNode> {
                     final double longitude = coordinates.optDouble("longitude");
                     geolocation = new Geolocation(latitude, longitude);
                 }
-
-                try {
-                    final JSONArray network6 = locData.getJSONArray("network6");
-
-                    for (int i = 0; i < network6.length(); i++) {
-                        final String ip = network6.getString(i);
-
-                        try {
-                            root.add6(new NetworkNode(ip, loc, geolocation));
-                        } catch (NetworkNodeException ex) {
-                            LOGGER.error(ex, ex);
-                            return null;
-                        }
-                    }
-                } catch (JSONException ex) {
-                    LOGGER.warn("An exception was caught while accessing the network6 key of " + loc + " in the incoming coverage zone file: " + ex.getMessage());
-                }
-
-                try {
-                    final JSONArray network = locData.getJSONArray("network");
-
-                    for (int i = 0; i < network.length(); i++) {
-                        final String ip = network.getString(i);
-
-                        try {
-                            root.add(new NetworkNode(ip, loc, geolocation));
-                        } catch (NetworkNodeException ex) {
-                            LOGGER.error(ex, ex);
-                            return null;
-                        }
-                    }
-                } catch (JSONException ex) {
-                    LOGGER.warn("An exception was caught while accessing the network key of " + loc + " in the incoming coverage zone file: " + ex.getMessage());
-                }
+                CacheLocation deepLoc = null;
                 if (useDeep) {
                     try {
                         final JSONArray caches = locData.getJSONArray("caches");
-                        CacheLocation deepLoc = null;
                         for (int i = 0; i < caches.length(); i++) {
                             if (deepLoc == null) {
                                 deepLoc = new CacheLocation( "deep." + loc, new Geolocation(0.0, 0.0));  // TODO JvD
@@ -177,6 +143,48 @@ public class NetworkNode implements Comparable<NetworkNode> {
                         LOGGER.warn("An exception was caught while accessing the caches key of " + loc + " in the incoming coverage zone file: " + ex.getMessage());
                     }
                 }
+
+                try {
+                    final JSONArray network6 = locData.getJSONArray("network6");
+
+                    for (int i = 0; i < network6.length(); i++) {
+                        final String ip = network6.getString(i);
+
+                        try {
+                            final NetworkNode nn = new NetworkNode(ip, loc, geolocation);
+                            if (useDeep && deepLoc != null) { // for deepLoc, we add the location here; normally it gets added by setLocation.
+                                nn.setCacheLocation(deepLoc);
+                            }
+                            root.add6(nn);
+                        } catch (NetworkNodeException ex) {
+                            LOGGER.error(ex, ex);
+                            return null;
+                        }
+                    }
+                } catch (JSONException ex) {
+                    LOGGER.warn("An exception was caught while accessing the network6 key of " + loc + " in the incoming coverage zone file: " + ex.getMessage());
+                }
+
+                try {
+                    final JSONArray network = locData.getJSONArray("network");
+
+                    for (int i = 0; i < network.length(); i++) {
+                        final String ip = network.getString(i);
+
+                        try {
+                            final NetworkNode nn = new NetworkNode(ip, loc, geolocation);
+                            if (useDeep && deepLoc != null) {
+                                nn.setCacheLocation(deepLoc);
+                            }
+                            root.add(nn);
+                        } catch (NetworkNodeException ex) {
+                            LOGGER.error(ex, ex);
+                            return null;
+                        }
+                    }
+                } catch (JSONException ex) {
+                    LOGGER.warn("An exception was caught while accessing the network key of " + loc + " in the incoming coverage zone file: " + ex.getMessage());
+                }
             }
 
             if (!verifyOnly) {
@@ -187,6 +195,7 @@ public class NetworkNode implements Comparable<NetworkNode> {
                 }
             }
 
+            LOGGER.info("DDC: useDeep " + useDeep + " top size = " + root.children.size());
             return root;
         } catch (JSONException e) {
             LOGGER.warn(e, e);
@@ -215,17 +224,21 @@ public class NetworkNode implements Comparable<NetworkNode> {
     }
 
     public NetworkNode getNetwork(final NetworkNode ipnn) {
+        //LOGGER.info("getNetwork " + ipnn.cidrAddress + " from " +this.children.size());
         if (this.compareTo(ipnn) != 0) {
+            LOGGER.info("DDC One");
             return null;
         }
 
         if (children == null) {
+            LOGGER.info("DDC Two");
             return this;
         }
 
         final NetworkNode c = children.get(ipnn);
 
         if (c == null) {
+            LOGGER.info("DDC Three");
             return this;
         }
 
