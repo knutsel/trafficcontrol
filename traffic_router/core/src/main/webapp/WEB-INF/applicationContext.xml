@@ -165,8 +165,8 @@
 	<bean id="deepNetworkUpdater" class="com.comcast.cdn.traffic_control.traffic_router.core.loc.DeepNetworkUpdater" init-method="init">
 		<property name="executorService" ref="ScheduledExecutorService" />
 		<property name="databasesDirectory" ref="databasesDir" />
-		<property name="databaseName" value="$[cache.czmap.database:czmap.json]" />
-		<property name="pollingInterval" value="$[cache.czmap.database.refresh.period:10800000]" />
+		<property name="databaseName" value="$[cache.dczmap.database:dczmap.json]" />
+		<property name="pollingInterval" value="$[cache.dczmap.database.refresh.period:10800000]" />
 		<property name="trafficRouterManager" ref="trafficRouterManager" />
 	</bean>
 
