@@ -528,10 +528,12 @@ public class ConfigHandler {
 	private void parseDeepCoverageZoneNetworkConfig(final JSONObject config) throws JSONException {
 		LOGGER.info("DDC IGNORE ME here to please PMD - TODO JvD" + config.getString("coveragezone.polling.url"));
 		getDeepNetworkUpdater().setDataBaseURL(
+				// TODO JvD - hook up paramaters
 				//config.getString("coveragezone.polling.url"),
 				//config.optLong("coveragezone.polling.interval")
 				"http://ipcdn-tools-03.cdnlab.comcast.net/jvd/deepczf.json",
-				86400
+				86400000,
+				10000
 			);
 	}
 

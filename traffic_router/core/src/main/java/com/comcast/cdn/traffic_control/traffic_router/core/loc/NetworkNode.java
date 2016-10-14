@@ -103,7 +103,7 @@ public class NetworkNode implements Comparable<NetworkNode> {
         return generateTree(json, verifyOnly, false);
 	}
 
-	// both PMD.CyclomaticComplexity PMD.NPathComplexit will be flagged :( TODO JvD
+	// both PMD.CyclomaticComplexity PMD.NPathComplexity will be flagged :( TODO JvD
     @SuppressWarnings("PMD")
     public static NetworkNode generateTree(final JSONObject json, final boolean verifyOnly, final boolean useDeep) {
         try {
@@ -161,11 +161,11 @@ public class NetworkNode implements Comparable<NetworkNode> {
 					    final JSONArray caches = locData.getJSONArray("caches");
 					    CacheLocation deepLoc = null;
 					    for (int i = 0; i < caches.length(); i++) {
-							LOGGER.info("loop caches");
 						    if (deepLoc == null) {
 							    deepLoc = new CacheLocation( "deep." + loc, new Geolocation(0.0, 0.0));  // TODO JvD 
 						    }
-						    // get the cache from the cacheregister here.
+						    // Get the cache from the cacheregister here - don't create a new cache due to the deep file, only reuse the 
+							// ones we already know about.
 						    final Cache cache = cacheRegister.getCacheMap().get(caches.getString(i));
 							if (cache == null) {
 								LOGGER.error("DDC: deep cache entry " + caches.getString(i) + " not found in crconfig server list!");
