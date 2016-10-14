@@ -80,18 +80,18 @@ public class TrafficRouter {
 
 	private final Random random = new Random(System.nanoTime());
 	private Set<String> requestHeaders = new HashSet<String>();
-	private static final Geolocation GEO_ZERO_ZERO = new Geolocation(0,0);
+	private static final Geolocation GEO_ZERO_ZERO = new Geolocation(0, 0);
 	private ApplicationContext applicationContext;
 
 	private final ConsistentHasher consistentHasher = new ConsistentHasher();
 	private SteeringRegistry steeringRegistry;
 
-	public TrafficRouter(final CacheRegister cr, 
-			final GeolocationService geolocationService, 
-			final GeolocationService geolocationService6, 
-			final StatTracker statTracker,
-			final TrafficOpsUtils trafficOpsUtils,
-			final FederationRegistry federationRegistry) throws IOException, JSONException {
+	public TrafficRouter(final CacheRegister cr,
+	                     final GeolocationService geolocationService,
+	                     final GeolocationService geolocationService6,
+	                     final StatTracker statTracker,
+	                     final TrafficOpsUtils trafficOpsUtils,
+	                     final FederationRegistry federationRegistry) throws IOException, JSONException {
 		this.cacheRegister = cr;
 		this.geolocationService = geolocationService;
 		this.geolocationService6 = geolocationService6;
@@ -108,7 +108,7 @@ public class TrafficRouter {
 	 * Returns a {@link List} of all of the online {@link Cache}s that support the specified
 	 * {@link DeliveryService}. If no online caches are found to support the specified
 	 * DeliveryService an empty list is returned.
-	 * 
+	 *
 	 * @param ds
 	 *            the DeliveryService to check
 	 * @return collection of supported caches
@@ -133,7 +133,7 @@ public class TrafficRouter {
 		return cacheRegister;
 	}
 	protected DeliveryService selectDeliveryService(final Request request, final boolean isHttp) {
-		if(cacheRegister==null) {
+		if (cacheRegister == null) {
 			LOGGER.warn("no caches yet");
 			return null;
 		}
@@ -152,7 +152,7 @@ public class TrafficRouter {
 		return true;
 	}
 	private boolean setDsStates(final JSONObject dsStates) {
-		if(dsStates == null) {
+		if (dsStates == null) {
 			return false;
 		}
 		final Map<String, DeliveryService> dsMap = cacheRegister.getDeliveryServices();
@@ -162,11 +162,11 @@ public class TrafficRouter {
 		return true;
 	}
 	private boolean setCacheStates(final JSONObject cacheStates) {
-		if(cacheStates == null) {
+		if (cacheStates == null) {
 			return false;
 		}
 		final Map<String, Cache> cacheMap = cacheRegister.getCacheMap();
-		if(cacheMap == null) { return false; }
+		if (cacheMap == null) { return false; }
 		for (final String cacheName : cacheMap.keySet()) {
 			final String monitorCacheName = cacheName.replaceFirst("@.*", "");
 			final JSONObject state = cacheStates.optJSONObject(monitorCacheName);
@@ -236,7 +236,7 @@ public class TrafficRouter {
 				return caches;
 			}
 			locationsTested++;
-			if(locationLimit != 0 && locationsTested >= locationLimit) {
+			if (locationLimit != 0 && locationsTested >= locationLimit) {
 				return null;
 			}
 		}
@@ -245,11 +245,11 @@ public class TrafficRouter {
 	}
 	protected List<Cache> selectCaches(final Request request, final DeliveryService ds, final Track track) throws GeolocationException {
 		// DDC - Dynamic Deep Caching
-		// cacheLocation has a list of caches that we can hash this request to. 
+		// cacheLocation has a list of caches that we can hash this request to.
 		// Make this list different for content that should be cached deep.
 		boolean useDeepCZ = false;
-		if (ds.getDeepCache() == DeliveryService.DeepCacheType.DC_ALWAYS || 
-			(ds.getDeepCache() == DeliveryService.DeepCacheType.DC_POPULAR && true) ) { // change true to a function that returns yes if the request.getPath is popular
+		if (ds.getDeepCache() == DeliveryService.DeepCacheType.DC_ALWAYS ||
+		        (ds.getDeepCache() == DeliveryService.DeepCacheType.DC_POPULAR && true) ) { // change true to a function that returns yes if the request.getPath is popular
 			useDeepCZ = true;
 		}
 
@@ -290,8 +290,8 @@ public class TrafficRouter {
 			if (deliveryService.getGeoRedirectUrl() != null) {
 				//will use the NGB redirect
 				LOGGER.debug(String
-						.format("client is blocked by geolimit, use the NGB redirect url: %s",
-							deliveryService.getGeoRedirectUrl()));
+				             .format("client is blocked by geolimit, use the NGB redirect url: %s",
+				                     deliveryService.getGeoRedirectUrl()));
 				return enforceGeoRedirect(track, deliveryService, clientIp, track.getClientGeolocation());
 			} else {
 				track.setResultDetails(ResultDetails.DS_CLIENT_GEO_UNSUPPORTED);
@@ -300,7 +300,7 @@ public class TrafficRouter {
 		}
 
 		final List<Cache> caches = getCachesByGeo(deliveryService, clientLocation, track);
-		
+
 		if (caches == null || caches.isEmpty()) {
 			track.setResultDetails(ResultDetails.GEO_NO_CACHE_FOUND);
 		}
@@ -473,7 +473,7 @@ public class TrafficRouter {
 			if (track.getResult() == ResultType.GEO_REDIRECT) {
 				routeResult.setUrl(new URL(deliveryService.getGeoRedirectUrl()));
 				LOGGER.debug(String.format("NGB redirect to url: %s for request: %s", deliveryService.getGeoRedirectUrl()
-						, request.getRequestedUrl()));
+				                           , request.getRequestedUrl()));
 				return routeResult;
 			}
 
@@ -516,7 +516,7 @@ public class TrafficRouter {
 		return deliveryService;
 	}
 
-	protected NetworkNode getDeepNetworkNode(final String ip) { 
+	protected NetworkNode getDeepNetworkNode(final String ip) {
 		try {
 			return NetworkNode.getDeepInstance().getNetwork(ip);
 		} catch (NetworkNodeException e) {
@@ -540,26 +540,26 @@ public class TrafficRouter {
 
 	public CacheLocation getCoverageZoneCacheLocation(final String ip, final String deliveryServiceId, final boolean useDeep) {
 		NetworkNode networkNode;
-	   if (useDeep) {
-	   		networkNode = getDeepNetworkNode(ip);
-	   } else {
-		   networkNode = getNetworkNode(ip);
-	   }
+		if (useDeep) {
+			networkNode = getDeepNetworkNode(ip);
+		} else {
+			networkNode = getNetworkNode(ip);
+		}
 
 		if (networkNode == null) {
-            LOGGER.info("DDC networkNode == null");
+			LOGGER.info("DDC networkNode == null");
 			return null;
 		}
 
-        LOGGER.info("DDC networkNode != null");
+		LOGGER.info("DDC networkNode != null");
 		CacheLocation cacheLocation = networkNode.getCacheLocation();
 
 		if (cacheLocation != null) {
-            LOGGER.info("DDC cacheLocation != null!");
+			LOGGER.info("DDC cacheLocation != null!");
 			return cacheLocation;
 		}
 
-        LOGGER.info("DDC cacheLocation == null!");
+		LOGGER.info("DDC cacheLocation == null!");
 		if (networkNode.getLoc() == null) {
 			return null;
 		}
@@ -611,8 +611,8 @@ public class TrafficRouter {
 
 		List<Cache> caches = null;
 		if (deliveryService.isCoverageZoneOnly() && deliveryService.getGeoRedirectUrl() != null) {
-				//use the NGB redirect
-				caches = enforceGeoRedirect(StatTracker.getTrack(), deliveryService, ip, null);
+			//use the NGB redirect
+			caches = enforceGeoRedirect(StatTracker.getTrack(), deliveryService, ip, null);
 		} else {
 			final CacheLocation cacheLocation = getCoverageZoneCacheLocation(ip, deliveryServiceId);
 
@@ -662,7 +662,7 @@ public class TrafficRouter {
 	 * Returns a list {@link CacheLocation}s sorted by distance from the client.
 	 * If the client's location could not be determined, then the list is
 	 * unsorted.
-	 * 
+	 *
 	 * @param cacheLocations
 	 *            the collection of CacheLocations to order
 	 * @return the ordered list of locations
@@ -690,7 +690,7 @@ public class TrafficRouter {
 
 	/*
 	 * Selects a {@link Cache} from the {@link CacheLocation} provided.
-	 * 
+	 *
 	 * @param location
 	 *            the caches that will considered
 	 * @param ds
@@ -708,7 +708,7 @@ public class TrafficRouter {
 		if (caches.isEmpty()) {
 			if (LOGGER.isDebugEnabled()) {
 				LOGGER.debug("No online, supporting caches were found at location: "
-						+ location.getId());
+				             + location.getId());
 			}
 			return null;
 		}

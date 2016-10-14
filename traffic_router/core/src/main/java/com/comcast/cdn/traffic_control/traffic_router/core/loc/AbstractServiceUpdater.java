@@ -92,7 +92,7 @@ public abstract class AbstractServiceUpdater {
 	};
 
 	public void init() {
-		final long pollingInterval = getPollingInterval(); 
+		final long pollingInterval = getPollingInterval();
 		if (initialDelay == -1) {
 			initialDelay = pollingInterval;
 		}
