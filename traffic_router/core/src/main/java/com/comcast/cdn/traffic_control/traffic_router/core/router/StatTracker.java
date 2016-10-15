@@ -92,6 +92,7 @@ public class StatTracker {
 
 		public int czCount;
 		public int geoCount;
+		public int deepCzCount;
 		public int missCount;
 		public int dsrCount;
 		public int errCount;
@@ -107,7 +108,7 @@ public class StatTracker {
 		}
 
 		public static enum ResultType {
-			ERROR, CZ, GEO, MISS, STATIC_ROUTE, DS_REDIRECT, DS_MISS, INIT, FED, RGDENY, RGALT, GEO_REDIRECT
+			ERROR, CZ, GEO, MISS, STATIC_ROUTE, DS_REDIRECT, DS_MISS, INIT, FED, RGDENY, RGALT, GEO_REDIRECT, DEEP_CZ
 		}
 
 		public enum ResultDetails {
@@ -276,6 +277,9 @@ public class StatTracker {
 			break;
 		case GEO:
 			tallies.geoCount++;
+			break;
+		case DEEP_CZ:
+			tallies.deepCzCount++;
 			break;
 		case MISS:
 			tallies.missCount++;

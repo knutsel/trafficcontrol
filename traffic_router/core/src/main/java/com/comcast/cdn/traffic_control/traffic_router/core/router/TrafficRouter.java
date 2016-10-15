@@ -248,6 +248,7 @@ public class TrafficRouter {
 		// cacheLocation has a list of caches that we can hash this request to.
 		// Make this list different for content that should be cached deep.
 		boolean useDeepCZ = false;
+		ResultType result;
 		if (ds.getDeepCache() == DeliveryService.DeepCacheType.DC_ALWAYS ||
 		        (ds.getDeepCache() == DeliveryService.DeepCacheType.DC_POPULAR && true) ) { // change true to a function that returns yes if the request.getPath is popular
 			useDeepCZ = true;
@@ -255,7 +256,15 @@ public class TrafficRouter {
 
 		LOGGER.info("useDeepCZ == " + useDeepCZ);
 		final CacheLocation cacheLocation = getCoverageZoneCacheLocation(request.getClientIP(), ds, useDeepCZ);
-		List<Cache>caches = selectCachesByCZ(ds, cacheLocation, track);
+		if (cacheLocation != null) {	
+			result = resultType.DEEP_CZ;
+		} else {
+			// if there are no caches deep, fall back to the cachegroup wide czf
+			cacheLocation = getCoverageZoneCacheLocation(request.getClientIP(), ds, false);
+			result = resultType.CZ;
+		}
+
+		List<Cache>caches = selectCachesByCZ(ds, cacheLocation, track, result);
 
 		if (caches != null) {
 			return caches;
@@ -435,6 +444,10 @@ public class TrafficRouter {
 	}
 
 	private List<Cache> selectCachesByCZ(final DeliveryService ds, final CacheLocation cacheLocation, final Track track) {
+		return selectCachesByCZ(ds, cacheLocation, track, ResultType.CZ); // RestultType.CZ was the original default before DDC
+	}
+
+	private List<Cache> selectCachesByCZ(final DeliveryService ds, final CacheLocation cacheLocation, final Track track, final ResultType result) {
 		if (cacheLocation == null || ds == null || !ds.isLocationAvailable(cacheLocation)) {
 			return null;
 		}
@@ -442,7 +455,7 @@ public class TrafficRouter {
 		final List<Cache> caches = selectCaches(cacheLocation, ds);
 
 		if (caches != null && track != null) {
-			track.setResult(ResultType.CZ);
+			track.setResult(result);
 			track.setResultLocation(cacheLocation.getGeolocation());
 		}
 
