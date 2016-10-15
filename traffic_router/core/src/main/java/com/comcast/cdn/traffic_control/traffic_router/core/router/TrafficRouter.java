@@ -255,13 +255,13 @@ public class TrafficRouter {
 		}
 
 		LOGGER.info("useDeepCZ == " + useDeepCZ);
-		final CacheLocation cacheLocation = getCoverageZoneCacheLocation(request.getClientIP(), ds, useDeepCZ);
+		CacheLocation cacheLocation = getCoverageZoneCacheLocation(request.getClientIP(), ds, useDeepCZ);
 		if (cacheLocation != null) {	
-			result = resultType.DEEP_CZ;
+			result = ResultType.DEEP_CZ;
 		} else {
 			// if there are no caches deep, fall back to the cachegroup wide czf
 			cacheLocation = getCoverageZoneCacheLocation(request.getClientIP(), ds, false);
-			result = resultType.CZ;
+			result = ResultType.CZ;
 		}
 
 		List<Cache>caches = selectCachesByCZ(ds, cacheLocation, track, result);
