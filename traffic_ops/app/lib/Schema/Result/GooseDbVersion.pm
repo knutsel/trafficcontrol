@@ -37,7 +37,7 @@ __PACKAGE__->table("goose_db_version");
 
 =head2 is_applied
 
-  data_type: 'smallint'
+  data_type: 'boolean'
   is_nullable: 0
 
 =head2 tstamp
@@ -60,7 +60,7 @@ __PACKAGE__->add_columns(
   "version_id",
   { data_type => "numeric", is_nullable => 0 },
   "is_applied",
-  { data_type => "smallint", is_nullable => 0 },
+  { data_type => "boolean", is_nullable => 0 },
   "tstamp",
   {
     data_type     => "timestamp with time zone",
@@ -83,8 +83,8 @@ __PACKAGE__->add_columns(
 __PACKAGE__->set_primary_key("id");
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2016-09-24 13:32:07
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:ohJFD6WJQ2Xcgu7Ra0Lq8g
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2016-10-15 16:46:38
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:MMxDeVOdbiDPqnH2nUUGyg
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

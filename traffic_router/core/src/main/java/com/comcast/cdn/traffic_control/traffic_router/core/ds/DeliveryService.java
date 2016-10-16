@@ -145,7 +145,7 @@ public class DeliveryService {
 		acceptHttp = protocol != null ? protocol.optBoolean("acceptHttp", true) : true;
 		acceptHttps = protocol != null ? protocol.optBoolean("acceptHttps", false) : false;
 		redirectToHttps = protocol != null ? protocol.optBoolean("redirectToHttps", false) : false;
-		deepCache = DeepCacheType.DC_ALWAYS; // TODO JvD
+		this.deepCache = (DeepCacheType) dsJo.optInteger("deepCachingType", DeepCacheType.DC_NEVER);
 	}
 
 	public String getId() {

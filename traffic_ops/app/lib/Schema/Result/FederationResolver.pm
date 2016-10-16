@@ -85,7 +85,7 @@ __PACKAGE__->set_primary_key("id");
 
 =head1 UNIQUE CONSTRAINTS
 
-=head2 C<idx_55004_federation_resolver_ip_address>
+=head2 C<idx_44582_federation_resolver_ip_address>
 
 =over 4
 
@@ -95,7 +95,7 @@ __PACKAGE__->set_primary_key("id");
 
 =cut
 
-__PACKAGE__->add_unique_constraint("idx_55004_federation_resolver_ip_address", ["ip_address"]);
+__PACKAGE__->add_unique_constraint("idx_44582_federation_resolver_ip_address", ["ip_address"]);
 
 =head1 RELATIONS
 
@@ -130,8 +130,8 @@ __PACKAGE__->belongs_to(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2016-09-27 10:16:26
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:b4rXEzsWJPX0oUdDAbiQFw
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2016-10-15 16:46:37
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:85LJwWVXl3w3VuPan6Tkzw
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

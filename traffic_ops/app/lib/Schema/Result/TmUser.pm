@@ -212,7 +212,7 @@ __PACKAGE__->set_primary_key("id");
 
 =head1 UNIQUE CONSTRAINTS
 
-=head2 C<idx_55210_tmuser_email_unique>
+=head2 C<idx_44788_tmuser_email_unique>
 
 =over 4
 
@@ -222,9 +222,9 @@ __PACKAGE__->set_primary_key("id");
 
 =cut
 
-__PACKAGE__->add_unique_constraint("idx_55210_tmuser_email_unique", ["email"]);
+__PACKAGE__->add_unique_constraint("idx_44788_tmuser_email_unique", ["email"]);
 
-=head2 C<idx_55210_username_unique>
+=head2 C<idx_44788_username_unique>
 
 =over 4
 
@@ -234,7 +234,7 @@ __PACKAGE__->add_unique_constraint("idx_55210_tmuser_email_unique", ["email"]);
 
 =cut
 
-__PACKAGE__->add_unique_constraint("idx_55210_username_unique", ["username"]);
+__PACKAGE__->add_unique_constraint("idx_44788_username_unique", ["username"]);
 
 =head1 RELATIONS
 
@@ -319,8 +319,8 @@ __PACKAGE__->belongs_to(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2016-09-27 10:16:26
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:1zfoxk8BBplYrPWqLj2+Xg
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2016-10-15 16:46:38
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:dk5drL5K5chSVs0fZYrKsA
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration

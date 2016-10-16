@@ -282,6 +282,12 @@ __PACKAGE__->table("deliveryservice");
   data_type: 'text'
   is_nullable: 1
 
+=head2 deep_caching_type
+
+  data_type: 'smallint'
+  default_value: 0
+  is_nullable: 1
+
 =cut
 
 __PACKAGE__->add_columns(
@@ -393,6 +399,8 @@ __PACKAGE__->add_columns(
   { data_type => "smallint", is_nullable => 1 },
   "geolimit_redirect_url",
   { data_type => "text", is_nullable => 1 },
+  "deep_caching_type",
+  { data_type => "smallint", default_value => 0, is_nullable => 1 },
 );
 
 =head1 PRIMARY KEY
@@ -411,7 +419,7 @@ __PACKAGE__->set_primary_key("id", "type");
 
 =head1 UNIQUE CONSTRAINTS
 
-=head2 C<idx_54947_ds_id_unique>
+=head2 C<idx_44525_ds_id_unique>
 
 =over 4
 
@@ -421,9 +429,9 @@ __PACKAGE__->set_primary_key("id", "type");
 
 =cut
 
-__PACKAGE__->add_unique_constraint("idx_54947_ds_id_unique", ["id"]);
+__PACKAGE__->add_unique_constraint("idx_44525_ds_id_unique", ["id"]);
 
-=head2 C<idx_54947_ds_name_unique>
+=head2 C<idx_44525_ds_name_unique>
 
 =over 4
 
@@ -433,7 +441,7 @@ __PACKAGE__->add_unique_constraint("idx_54947_ds_id_unique", ["id"]);
 
 =cut
 
-__PACKAGE__->add_unique_constraint("idx_54947_ds_name_unique", ["xml_id"]);
+__PACKAGE__->add_unique_constraint("idx_44525_ds_name_unique", ["xml_id"]);
 
 =head1 RELATIONS
 
@@ -603,7 +611,7 @@ __PACKAGE__->belongs_to(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2016-09-27 10:16:26
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:oRI0j54jL5ypnpXOsbAVEw
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2016-10-15 16:46:37
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:jeFChhN7V8Bzd7bR95nd9w
 # You can replace this text with custom code or comments, and it will be preserved on regeneration
 1;

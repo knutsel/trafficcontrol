@@ -148,7 +148,7 @@ __PACKAGE__->set_primary_key("id");
 
 =head1 UNIQUE CONSTRAINTS
 
-=head2 C<idx_55100_name_unique>
+=head2 C<idx_44678_name_unique>
 
 =over 4
 
@@ -158,9 +158,9 @@ __PACKAGE__->set_primary_key("id");
 
 =cut
 
-__PACKAGE__->add_unique_constraint("idx_55100_name_unique", ["name"]);
+__PACKAGE__->add_unique_constraint("idx_44678_name_unique", ["name"]);
 
-=head2 C<idx_55100_short_name_unique>
+=head2 C<idx_44678_short_name_unique>
 
 =over 4
 
@@ -170,7 +170,7 @@ __PACKAGE__->add_unique_constraint("idx_55100_name_unique", ["name"]);
 
 =cut
 
-__PACKAGE__->add_unique_constraint("idx_55100_short_name_unique", ["short_name"]);
+__PACKAGE__->add_unique_constraint("idx_44678_short_name_unique", ["short_name"]);
 
 =head1 RELATIONS
 
@@ -205,8 +205,8 @@ __PACKAGE__->has_many(
 );
 
 
-# Created by DBIx::Class::Schema::Loader v0.07045 @ 2016-09-27 10:16:26
-# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:sTYZJNO2J6n+7iKbpo9L+Q
+# Created by DBIx::Class::Schema::Loader v0.07045 @ 2016-10-15 16:46:38
+# DO NOT MODIFY THIS OR ANYTHING ABOVE! md5sum:nJdUWxT3dpGYEXRNCkEICA
 
 
 # You can replace this text with custom code or comments, and it will be preserved on regeneration
