@@ -25,7 +25,6 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.TreeMap;
-//import java.util.Iterator;
 
 import com.comcast.cdn.traffic_control.traffic_router.core.util.CidrAddress;
 import com.comcast.cdn.traffic_control.traffic_router.geolocation.Geolocation;
@@ -103,6 +102,40 @@ public class NetworkNode implements Comparable<NetworkNode> {
         return generateTree(json, verifyOnly, false);
     }
 
+    static CacheLocation getDeepCacheLocation(final JSONObject locationJson, final String locationName) {
+        final JSONArray caches = locationJson.optJSONArray("caches");
+
+        if (caches == null) {
+            return null;
+        }
+
+        CacheLocation deepLoc = null;
+
+        for (int i = 0; i < caches.length(); i++) {
+            if (deepLoc == null) {
+                deepLoc = new CacheLocation( "deep." + locationName, new Geolocation(0.0, 0.0));  // TODO JvD
+            }
+            // Get the cache from the cacheregister here - don't create a new cache due to the deep file, only reuse the
+            // ones we already know about.
+            final String cachesString = caches.optString(i);
+            if (cachesString.isEmpty()) {
+                LOGGER.error("DDC: cache number " + i + " is empty!");
+                continue;
+            }
+
+            final Cache cache = cacheRegister.getCacheMap().get(cachesString);
+
+            if (cache == null) {
+                LOGGER.error("DDC: deep cache entry " + cachesString + " not found in crconfig server list!");
+            } else {
+                LOGGER.info("DDC: Adding " + cachesString + " to " + deepLoc.getId() + ".");
+                deepLoc.addCache(cache);
+            }
+        }
+
+        return deepLoc;
+    }
+
     @SuppressWarnings({"PMD.CyclomaticComplexity", "PMD.NPathComplexity"})
     public static NetworkNode generateTree(final JSONObject json, final boolean verifyOnly, final boolean useDeep) {
         try {
@@ -121,27 +154,11 @@ public class NetworkNode implements Comparable<NetworkNode> {
                     final double longitude = coordinates.optDouble("longitude");
                     geolocation = new Geolocation(latitude, longitude);
                 }
+
                 CacheLocation deepLoc = null;
+
                 if (useDeep) {
-                    try {
-                        final JSONArray caches = locData.getJSONArray("caches");
-                        for (int i = 0; i < caches.length(); i++) {
-                            if (deepLoc == null) {
-                                deepLoc = new CacheLocation( "deep." + loc, new Geolocation(0.0, 0.0));  // TODO JvD
-                            }
-                            // Get the cache from the cacheregister here - don't create a new cache due to the deep file, only reuse the
-                            // ones we already know about.
-                            final Cache cache = cacheRegister.getCacheMap().get(caches.getString(i));
-                            if (cache == null) {
-                                LOGGER.error("DDC: deep cache entry " + caches.getString(i) + " not found in crconfig server list!");
-                            } else {
-                                LOGGER.info("DDC: Adding " + caches.getString(i) + " to " + deepLoc.getId() + ".");
-                                deepLoc.addCache(cache);
-                            }
-                        }
-                    } catch (JSONException ex) {
-                        LOGGER.warn("An exception was caught while accessing the caches key of " + loc + " in the incoming coverage zone file: " + ex.getMessage());
-                    }
+                    deepLoc = getDeepCacheLocation(locData, loc);
                 }
 
                 try {
@@ -152,9 +169,12 @@ public class NetworkNode implements Comparable<NetworkNode> {
 
                         try {
                             final NetworkNode nn = new NetworkNode(ip, loc, geolocation);
-                            if (useDeep && deepLoc != null) { // for deepLoc, we add the location here; normally it gets added by setLocation.
+
+                            if (deepLoc != null) {
+                                // for deepLoc, we add the location here; normally it gets added by setLocation.
                                 nn.setCacheLocation(deepLoc);
                             }
+
                             root.add6(nn);
                         } catch (NetworkNodeException ex) {
                             LOGGER.error(ex, ex);
@@ -173,9 +193,11 @@ public class NetworkNode implements Comparable<NetworkNode> {
 
                         try {
                             final NetworkNode nn = new NetworkNode(ip, loc, geolocation);
-                            if (useDeep && deepLoc != null) {
+
+                            if (deepLoc != null) {
                                 nn.setCacheLocation(deepLoc);
                             }
+
                             root.add(nn);
                         } catch (NetworkNodeException ex) {
                             LOGGER.error(ex, ex);
@@ -205,6 +227,7 @@ public class NetworkNode implements Comparable<NetworkNode> {
 
         return null;
     }
+
     public NetworkNode(final String str) throws NetworkNodeException {
         this(str, null);
     }

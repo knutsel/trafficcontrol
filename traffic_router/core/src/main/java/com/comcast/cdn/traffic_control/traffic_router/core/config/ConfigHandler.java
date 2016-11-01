@@ -201,7 +201,6 @@ public class ConfigHandler {
 				parseCacheConfig(jo.getJSONObject("contentServers"), cacheRegister);
 				parseMonitorConfig(jo.getJSONObject("monitors"));
 				NetworkNode.getInstance().clearCacheLocations();
-				LOGGER.info("CONFIG: Seeting NetworkNode cr");
 				NetworkNode.setCacheRegister(cacheRegister);
 				federationsWatcher.configure(config);
 				steeringWatcher.configure(config);

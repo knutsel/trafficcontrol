@@ -67,6 +67,9 @@ import com.comcast.cdn.traffic_control.traffic_router.core.util.TrafficOpsUtils;
 import com.comcast.cdn.traffic_control.traffic_router.core.util.CidrAddress;
 import com.comcast.cdn.traffic_control.traffic_router.core.router.StatTracker.Track.ResultDetails;
 
+import static com.comcast.cdn.traffic_control.traffic_router.core.ds.DeliveryService.DeepCache.ALWAYS;
+import static com.comcast.cdn.traffic_control.traffic_router.core.ds.DeliveryService.DeepCache.POPULAR;
+
 public class TrafficRouter {
 	public static final Logger LOGGER = Logger.getLogger(TrafficRouter.class);
 	public static final String XTC_STEERING_OPTION = "x-tc-steering-option";
@@ -243,45 +246,53 @@ public class TrafficRouter {
 
 		return null;
 	}
+
+	protected boolean isPopularPath(final Request request) {
+		return true;
+	}
+
+	@SuppressWarnings("PMD.CyclomaticComplexity")
 	protected List<Cache> selectCaches(final Request request, final DeliveryService ds, final Track track) throws GeolocationException {
 		// DDC - Dynamic Deep Caching
+		//
 		// cacheLocation has a list of caches that we can hash this request to.
 		// Make this list different for content that should be cached deep.
-		//boolean useDeepCZ = false;
+		//
         // first get the cachegroup, because the popularity is by cachegroup...
         // this is expensive, but i see no other option.
+
 		final CacheLocation cacheGroup = getCoverageZoneCacheLocation(request.getClientIP(), ds, false);
 		CacheLocation cacheLocation = null;
 		ResultType result = ResultType.CZ;
-        if (cacheGroup != null) {
+
+		if (cacheGroup != null) {
             LOGGER.info("DDC: client found in CZ, cachegroup = " + cacheGroup.getId());
-            // change true to a function that returns yes if the request.getPath is popular
-		    if (ds.getDeepCache() == DeliveryService.DC_ALWAYS || (ds.getDeepCache() == DeliveryService.DC_POPULAR && true) ) { 
-                // Deep caching is enabled and wanted for the requested URL. See if there are deep caches available
-		        cacheLocation = getCoverageZoneCacheLocation(request.getClientIP(), ds, true);
-                if (cacheLocation != null) {
-                    // Found deep caches for this client. Use the cacheLocation, and set result to DEEP_CZ
-			        result = ResultType.DEEP_CZ;
-                    LOGGER.info("DDC: Client found in DEEP_CZ");
-                } else {
-                    // No deep caches for this client, would have used them if there were any... 
-                    // set the cacheLocation to the cacheGroup found earlier.
-                    // TODO: should we have a result type for this?
-                    cacheLocation = cacheGroup;
-                    LOGGER.info("DDC: Client NOT found in DEEP_CZ, falling back to cachegroup");
-                }
-            } else {
-                // Deep caching not enabled or not for this URL. Back to cachegroup.
-                LOGGER.info("DDC: Deep caching not enabled or not for this URL. Back to cachegroup");
-                cacheLocation = cacheGroup;
-            }
-            
+
+		    if (ds.getDeepCache() == ALWAYS || ds.getDeepCache() == POPULAR && isPopularPath(request)) {
+			    // Deep caching is enabled and wanted for the requested URL. See if there are deep caches available
+			    cacheLocation = getCoverageZoneCacheLocation(request.getClientIP(), ds, true);
+
+			    if (cacheLocation != null) {
+				    // Found deep caches for this client. Use the cacheLocation, and set result to DEEP_CZ
+				    result = ResultType.DEEP_CZ;
+				    LOGGER.info("DDC: Client found in DEEP_CZ");
+			    }
+
+			    // TODO: If No deep caches for this client should we have a result type for this?
+		    }
+
+		    if (cacheLocation == null) {
+			    // Deep caching not enabled or not for this URL. Back to cachegroup.
+			    LOGGER.info("DDC: Deep caching not enabled or not for this URL. Back to cachegroup");
+			    cacheLocation = cacheGroup;
+		    }
+
         }  else {
             // cacheGroup == null, so let it ride to Geo
             LOGGER.info("DDC: client NOT found in CZ");
         } 
 
-		List<Cache>caches = selectCachesByCZ(ds, cacheLocation, track, result);
+		List<Cache> caches = selectCachesByCZ(ds, cacheLocation, track, result);
 
 		if (caches != null) {
 			return caches;

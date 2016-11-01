@@ -93,12 +93,9 @@ public class DeliveryService {
 	private final boolean acceptHttp;
 	private final boolean acceptHttps;
 	private final boolean redirectToHttps;
-	private int deepCache; // should this be final or should it be settable?
+	private DeepCache deepCache; // should this be final or should it be settable?
 
-    // enums are hard in Java.
-    public static final int DC_NEVER   = 0;
-    public static final int DC_POPULAR = 1;
-    public static final int DC_ALWAYS  = 2;
+	public enum DeepCache { NEVER, POPULAR, ALWAYS }
 
 	public DeliveryService(final String id, final JSONObject dsJo) throws JSONException {
 		this.id = id;
@@ -150,7 +147,7 @@ public class DeliveryService {
 		acceptHttp = protocol != null ? protocol.optBoolean("acceptHttp", true) : true;
 		acceptHttps = protocol != null ? protocol.optBoolean("acceptHttps", false) : false;
 		redirectToHttps = protocol != null ? protocol.optBoolean("redirectToHttps", false) : false;
-		this.deepCache = dsJo.optInt("deepCachingType", DC_NEVER);
+		this.deepCache = DeepCache.values()[dsJo.optInt("deepCachingType", DeepCache.NEVER.ordinal())];
 	}
 
 	public String getId() {
@@ -387,18 +384,15 @@ public class DeliveryService {
 	public boolean isDns() {
 		return isDns;
 	}
+
 	public void setDns(final boolean isDns) {
 		this.isDns = isDns;
 	}
 
-	//public static enum DeepCacheType {
-		//DC_NEVER(0), DC_ALWAYS(2), DC_POPULAR(1)
-	//}
-
-	public int getDeepCache() {
+	public DeepCache getDeepCache() {
 		return deepCache;
 	}
-	public void setDeepCache(final int deepCache) {
+	public void setDeepCache(final DeepCache deepCache) {
 		this.deepCache = deepCache;
 	}
 

@@ -199,8 +199,8 @@ public abstract class AbstractServiceUpdater {
 		dataBaseURL = null;
 	}
 
-	public void setDataBaseURL(final String url, final long refresh, final long iDelay) {
-		this.initialDelay = iDelay;
+	public void setDataBaseURL(final String url, final long refresh, final long initialDelay) {
+		this.initialDelay = initialDelay;
 		this.setDataBaseURL(url, refresh);
 	}
 

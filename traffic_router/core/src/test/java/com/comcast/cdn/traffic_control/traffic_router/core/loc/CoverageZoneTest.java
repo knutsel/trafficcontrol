@@ -36,6 +36,7 @@ import java.util.List;
 import static org.hamcrest.MatcherAssert.assertThat;
 import static org.hamcrest.Matchers.equalTo;
 import static org.hamcrest.Matchers.not;
+import static org.mockito.Matchers.anyBoolean;
 import static org.mockito.Matchers.anyListOf;
 import static org.mockito.Matchers.eq;
 import static org.mockito.Mockito.mock;
@@ -89,6 +90,7 @@ public class CoverageZoneTest {
 		trafficRouter = PowerMockito.mock(TrafficRouter.class);
 		Whitebox.setInternalState(trafficRouter, "cacheRegister", cacheRegister);
 		when(trafficRouter.getCoverageZoneCacheLocation("12.23.34.45", "delivery-service-1")).thenCallRealMethod();
+		when(trafficRouter.getCoverageZoneCacheLocation(eq("12.23.34.45"), eq("delivery-service-1"), anyBoolean())).thenCallRealMethod();
 		when(trafficRouter.getCacheRegister()).thenReturn(cacheRegister);
 		when(trafficRouter.orderCacheLocations(cacheGroups,testLocation)).thenCallRealMethod();
 		when(trafficRouter.getSupportingCaches(anyListOf(Cache.class), eq(deliveryService))).thenCallRealMethod();
