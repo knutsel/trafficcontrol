@@ -224,13 +224,13 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 
 	connectionClose := h.connectionClose || remappingProducer.ConnectionClose()
 
-	beforeCacheLookUpData := plugin.BeforeCacheLookUpData{Req: r, DefaultCacheKey: remappingProducer.CacheKey(), CacheKeyOverrideFunc: remappingProducer.OverrideCacheKey}
+	cache := remappingProducer.Cache()
+
+	beforeCacheLookUpData := plugin.BeforeCacheLookUpData{Req: r, DefaultCacheKey: remappingProducer.CacheKey(), CacheKeyOverrideFunc: remappingProducer.OverrideCacheKey, Cache: cache}
 	h.plugins.OnBeforeCacheLookup(remappingProducer.PluginCfg(), pluginContext, beforeCacheLookUpData)
 
 	cacheKey := remappingProducer.CacheKey()
 	retrier := NewRetrier(h, reqHeader, reqTime, reqCacheControl, remappingProducer, reqID)
-
-	cache := remappingProducer.Cache()
 
 	var reqHost *string
 	cacheObj, ok := cache.Get(cacheKey)
