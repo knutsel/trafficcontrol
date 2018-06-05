@@ -154,6 +154,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		firstSlice := int64(thisRange.Start / SSIZE)
 		lastSlice := int64((thisRange.End / SSIZE) + 1)
 		requestList := make([]*http.Request, 0)
+		//var bRange ByteRangeInfo
 		for i := firstSlice; i < lastSlice; i++ {
 
 			bRange := ByteRangeInfo{i * SSIZE, ((i + 1) * SSIZE) - 1, true}
@@ -175,28 +176,35 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 			req.Header.Set("Range", "bytes="+strconv.FormatInt(bRange.Start, 10)+"-"+strconv.FormatInt(bRange.End, 10))
 			requestList = append(requestList, req)
 		}
-		//log.Debugf("SLICE NEEDED needed: %v\n", ctx.SlicesNeeded)
-		start := firstSlice * SSIZE
-		end := ((firstSlice + 1) * SSIZE) - 1
-		bRange := ByteRangeInfo{start, end, true}
-		newKey := rangeCacheKey(d.DefaultCacheKey, bRange)
-		d.CacheKeyOverrideFunc(newKey)
-		log.Debugf("SLICE original request: range_req_handler: store_ranges default key:%s, new key:%s\n", d.DefaultCacheKey, newKey)
 
-		if len(requestList) == 0 {
-			return // it is a HIT for all slices
+		if len(requestList) == 0 { // it is a HIT for all slices
+			start := firstSlice * SSIZE
+			end := ((firstSlice + 1) * SSIZE) - 1
+			bRange := ByteRangeInfo{start, end, true}
+			newKey := rangeCacheKey(d.DefaultCacheKey, bRange)
+			d.CacheKeyOverrideFunc(newKey)
+			return
 		}
 
-		// change the original request to be the first slice needed
+		// we have at least one slice MISS, set the key of the upstream request to the first one, and set the range as wll
+		sep := "?"
+		if strings.Contains(d.DefaultCacheKey, "?") {
+			sep = "&"
+		}
+		newKey := d.DefaultCacheKey + sep + SLICEKEYSTRING + "=" + requestList[0].Header.Get("Range")
+		d.CacheKeyOverrideFunc(newKey)
 		d.Req.Header.Set("Range", requestList[0].Header.Get("Range"))
-		if len(requestList) == 1 { // if there is only one, we just change the existing upstream request and are done
+		log.Debugf("SLICE original request: range_req_handler: store_ranges default key:%s, new key:%s\n", d.DefaultCacheKey, newKey)
+
+		if len(requestList) == 1 { // if there is only one, we're done here. The modified upstream will get the right slice.
 			return
 		}
 
 		log.Debugf("SLICE Starting child requests")
 		client := &http.Client{}
 		var wg sync.WaitGroup
-		// do all requests except the first, since that one is handled by the original request
+
+		// do all slice requests except the first, since that one is handled by the original request, and wait for them to finish
 		for i := 1; i < len(requestList); i++ {
 			wg.Add(1)
 			go func(request *http.Request) {
