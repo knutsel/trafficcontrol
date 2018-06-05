@@ -293,11 +293,13 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 			//log.Debugf("SLICE needed: %v\n", ctx.SlicesNeeded)
 			//for _, bRange := range ctx.SlicesNeeded {
 			cacheKey := rangeCacheKey(*ctx.OriginalCacheKey, bRange)
-			log.Debugf("SLICE: GETTING KEY: %s from d.Cache: %v\n", cacheKey, d)
+			log.Debugf("SLICE: GETTING KEY: %s from d.Cache\n", cacheKey)
 			cachedObject, ok := d.Cache.Peek(cacheKey) // use Peek here, we already moved in the LRU and updated hitCount when we looked it up in beforeCacheLookup
 			if !ok {
 				log.Errorf("SLICE ERROR %s is not available in beforeRespond - this should not be possible, unless your cache is rolling _very_ fast!!!\n", cacheKey)
-				// TODO JvD: make an error
+				*d.Body = nil
+				*d.Code = http.StatusInternalServerError
+				return
 			}
 			sliceBody = append(sliceBody, cachedObject.Body...)
 		}
