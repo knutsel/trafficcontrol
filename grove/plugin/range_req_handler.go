@@ -24,7 +24,6 @@ import (
 
 	"github.com/apache/incubator-trafficcontrol/grove/web"
 	"github.com/apache/incubator-trafficcontrol/lib/go-log"
-	"io/ioutil"
 	"sync"
 )
 
@@ -36,8 +35,8 @@ type ByteRangeInfo struct {
 
 type RequestInfo struct {
 	RequestedRanges []ByteRangeInfo
-	//SlicesNeeded     []ByteRangeInfo
-	OriginalCacheKey string
+	//SlicesNeeded     []*ByteRangeInfo
+	OriginalCacheKey *string
 }
 
 const SSIZE = 1024
@@ -98,7 +97,8 @@ func rangeReqHandlerOnRequest(icfg interface{}, d OnRequestData) bool {
 		//log.Debugf("Leaving untouched: range %-%d", thisRange.Start, thisRange.End)
 		byteRanges[0].IsSlice = true
 	}
-	*d.Context = RequestInfo{byteRanges, ""}
+	//slicesNeeded := make([]ByteRangeInfo, 0)
+	*d.Context = &RequestInfo{byteRanges, nil}
 	return false
 }
 
@@ -112,7 +112,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 	}
 
 	ictx := d.Context
-	ctx, ok := (*ictx).(RequestInfo)
+	ctx, ok := (*ictx).(*RequestInfo)
 	if !ok {
 		log.Errorf("Invalid context: %v\n", ictx)
 	}
@@ -137,14 +137,15 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 			log.Errorf("multipart ranges not supported in slice mode (yet?), results are undetermined")
 			return
 		}
+		ctx.OriginalCacheKey = &d.DefaultCacheKey
 		if ctx.RequestedRanges[0].IsSlice { // if the request is already a slice, just mod the cachekey and move on.
-			sep := "?"
-			if strings.Contains(d.DefaultCacheKey, "?") {
-				sep = "&"
-			}
-			newKey := d.DefaultCacheKey + sep + SLICEKEYSTRING + d.Req.Header.Get("Range")
+			//bRange := ctx.RequestedRanges[0]
+			newKey := rangeCacheKey(d.DefaultCacheKey, ctx.RequestedRanges[0])
 			d.CacheKeyOverrideFunc(newKey)
-			log.Debugf("SLICE range_req_handler: store_ranges default key:%s, new key:%s\n", d.DefaultCacheKey, newKey)
+			//ctx.SlicesNeeded = append(ctx.SlicesNeeded, ctx.RequestedRanges[0])
+			log.Debugf("SLICE range_req_handler: slice default key:%s, new key:%s\n", d.DefaultCacheKey, newKey)
+			//copy(ctx.SlicesNeeded, ctx.RequestedRanges)
+			//log.Debugf("SLICE NEEDED hhh needed: %v %d\n", ctx.SlicesNeeded)
 			return
 		}
 
@@ -156,10 +157,11 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		for i := firstSlice; i < lastSlice; i++ {
 
 			bRange := ByteRangeInfo{i * SSIZE, ((i + 1) * SSIZE) - 1, true}
+			//ctx.SlicesNeeded = append(ctx.SlicesNeeded, bRange)
 
-			key := d.DefaultCacheKey + rangeCacheKey(ctx.OriginalCacheKey, bRange)
+			key := rangeCacheKey(d.DefaultCacheKey, bRange)
 			_, ok := d.Cache.Get(key)
-			if ok { // Get will put it at the top of the LRU. Use Peek in Respond to build response, and not increase the hitCount anymore
+			if ok { // Get will put it at the top of the LRU. This will enUse Peek in Respond to build response, and not increase the hitCount anymore
 				log.Debugf("SLICE URL HIT for key: %s\n", key)
 				continue
 			}
@@ -173,7 +175,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 			req.Header.Set("Range", "bytes="+strconv.FormatInt(bRange.Start, 10)+"-"+strconv.FormatInt(bRange.End, 10))
 			requestList = append(requestList, req)
 		}
-
+		//log.Debugf("SLICE NEEDED needed: %v\n", ctx.SlicesNeeded)
 		start := firstSlice * SSIZE
 		end := ((firstSlice + 1) * SSIZE) - 1
 		bRange := ByteRangeInfo{start, end, true}
@@ -214,6 +216,14 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 
 // rangeReqHandleBeforeParent changes the parent request if needed (mode == get_full_serve_range)
 func rangeReqHandleBeforeParent(icfg interface{}, d BeforeParentRequestData) {
+	//--
+	ictx := d.Context
+	ctx, ok := (*ictx).(*RequestInfo)
+	if !ok {
+		log.Errorf("Invalid context: %v\n", ictx)
+	}
+	log.Debugf("SLICE >>>>>>>> %v", ctx)
+	// -
 	log.Debugf("rangeReqHandleBeforeParent calling.")
 	rHeader := d.Req.Header.Get("Range")
 	if rHeader == "" {
@@ -233,71 +243,6 @@ func rangeReqHandleBeforeParent(icfg interface{}, d BeforeParentRequestData) {
 		return
 	}
 
-	//ictx := d.Context
-	//ctx, ok := (*ictx).(RequestInfo)
-	//if !ok {
-	//	log.Errorf("Invalid context: %v\n", ictx)
-	//}
-	//if len(ctx.RequestedRanges) == 0 {
-	//	return // there was no (valid) range header // shouldn't get here.
-	//}
-	//if cfg.Mode == "slice" {
-	//	if len(ctx.RequestedRanges) > 1 {
-	//		log.Errorf("multipart ranges not supported in slice mode (yet?), results are undetermined")
-	//		return
-	//	}
-	//	thisRange := ctx.RequestedRanges[0]
-	//	if thisRange.IsSlice {
-	//		log.Debugf("Leaving untouched: range %-%d", thisRange.Start, thisRange.End)
-	//		return // it's already sliced exatly how we like it.
-	//	}
-	//	//firstSlice := int64(thisRange.Start / SSIZE)
-	//	//lastSlice := int64((thisRange.End / SSIZE) + 1)
-	//	//
-	//	//// TODO JvD: stash in ctx?
-	//	////defCacheKey
-	//	//requestList := make([]*http.Request, 0)
-	//	//for i := firstSlice; i < lastSlice; i++ {
-	//	//	// TODO if already in cache continue TODO
-	//	//
-	//	//	bRange := ByteRangeInfo{i * SSIZE, ((i + 1) * SSIZE) - 1, true}
-	//	//	log.Debugf("URL: %v/%s, Range: %d-%d", d.Req, d.Req.RequestURI, bRange.Start, bRange.End)
-	//	//
-	//	//	URL := "http://localhost:8080" + d.Req.RequestURI
-	//	//	req, err := http.NewRequest("GET", URL, nil)
-	//	//	if err != nil {
-	//	//		log.Errorf("ERROR")
-	//	//	}
-	//	//	req.Host = d.Req.Host
-	//	//	req.Header.Set("Range", "bytes="+strconv.FormatInt(bRange.Start, 10)+"-"+strconv.FormatInt(bRange.End, 10))
-	//	//	requestList = append(requestList, req)
-	//	//}
-	//	//log.Debugf("Getting: %v", requestList)
-	//	//
-	//	//// TODO what to do when len(requestList) == 0??  (a full HIT).
-	//	//
-	//	//d.Req.Header.Set("Range", requestList[0].Header.Get("Range"))
-	//	////setCacheKeyForRange(d)
-	//	//if len(requestList) == 1 { // if there is one, we just change the existing upstream request and are done
-	//	//	return
-	//	//}
-	//	//
-	//	//log.Debugf("Starting child requests")
-	//	//client := &http.Client{}
-	//	//var wg sync.WaitGroup
-	//	//for i := 1; i < len(requestList); i++ {
-	//	//	wg.Add(1)
-	//	//	go func(request *http.Request) {
-	//	//		defer wg.Done()
-	//	//		_, err := client.Do(request)
-	//	//		if err != nil {
-	//	//			log.Errorf("Error in slicer:%v\n", err)
-	//	//		}
-	//	//	}(requestList[i])
-	//	//}
-	//	//wg.Wait()
-	//	//log.Debugf("All done.")
-	//}
 	return
 }
 
@@ -307,7 +252,7 @@ func rangeReqHandleBeforeParent(icfg interface{}, d BeforeParentRequestData) {
 func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 	log.Debugf("rangeReqHandleBeforeRespond calling\n")
 	ictx := d.Context
-	ctx, ok := (*ictx).(RequestInfo)
+	ctx, ok := (*ictx).(*RequestInfo)
 	if !ok {
 		log.Errorf("Invalid context: %v\n", ictx)
 	}
@@ -324,9 +269,32 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 		return // no need to do anything here.
 	}
 
+	sliceBody := make([]byte, 0)
+	bodyStart := int64(0)
 	if cfg.Mode == "slice" {
-		return //  TODO build a body
+		log.Debugf("SLICE requested: %v\n", ctx.RequestedRanges)
+		// some of this is dupe code.
+		thisRange := ctx.RequestedRanges[0]
+		firstSlice := int64(thisRange.Start / SSIZE)
+		lastSlice := int64((thisRange.End / SSIZE) + 1)
+		bodyStart = firstSlice * SSIZE
+		//requestList := make([]*http.Request, 0)
+		for i := firstSlice; i < lastSlice; i++ {
+
+			bRange := ByteRangeInfo{i * SSIZE, ((i + 1) * SSIZE) - 1, true}
+			//log.Debugf("SLICE needed: %v\n", ctx.SlicesNeeded)
+			//for _, bRange := range ctx.SlicesNeeded {
+			cacheKey := rangeCacheKey(*ctx.OriginalCacheKey, bRange)
+			log.Debugf("SLICE: GETTING KEY: %s from d.Cache: %v\n", cacheKey, d)
+			cachedObject, ok := d.Cache.Peek(cacheKey) // use Peek here, we already moved in the LRU and updated hitCount when we looked it up in beforeCacheLookup
+			if !ok {
+				log.Errorf("SLICE ERROR %s is not available in beforeRespond - this should not be possible, unless your cache is rolling _very_ fast!!!\n", cacheKey)
+				// TODO JvD: make an error
+			}
+			sliceBody = append(sliceBody, cachedObject.Body...)
+		}
 	}
+	*d.Body = sliceBody
 
 	// mode != store_ranges
 	multipartBoundaryString := cfg.MultiPartBoundary
@@ -342,7 +310,15 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 	if err != nil {
 		log.Errorf("Invalid Content-Length header: %v\n", d.Hdr.Get("Content-Length"))
 	}
+	if cfg.Mode == "slice" {
+		lenString := strings.Split(d.Hdr.Get("Content-Range"), "/")[1]
+		totalContentLength, err = strconv.ParseInt(lenString, 10, 64)
+		if err != nil {
+			log.Errorf("Invalid Content Range header: %v", d.Hdr.Get("Content-Range"))
+		}
+	}
 	body := make([]byte, 0)
+	log.Debugf("SLICE requested: %v\n", ctx.RequestedRanges)
 	for _, thisRange := range ctx.RequestedRanges {
 		if thisRange.End == -1 || thisRange.End >= totalContentLength { // if the end range is "", or too large serve until the end
 			thisRange.End = totalContentLength - 1
@@ -357,7 +333,8 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 		} else {
 			d.Hdr.Add("Content-Range", rangeString+"/"+strconv.FormatInt(totalContentLength, 10))
 		}
-		bSlice := (*d.Body)[thisRange.Start : thisRange.End+1]
+		log.Debugf("[thisRange.Start-bodyStart : thisRange.End+1-bodyStart] = [%d-%d : %d+1-%d\n", thisRange.Start, bodyStart, thisRange.End, bodyStart)
+		bSlice := (*d.Body)[thisRange.Start-bodyStart : thisRange.End+1-bodyStart]
 		body = append(body, bSlice...)
 	}
 	if multipartBoundaryString != "" {
@@ -374,14 +351,9 @@ func rangeCacheKey(defaultKey string, r ByteRangeInfo) string {
 	if strings.Contains(defaultKey, "?") {
 		sep = "&"
 	}
-	key := defaultKey + sep + SLICEKEYSTRING + "bytes=" + strconv.FormatInt(r.Start, 10) + "-" + strconv.FormatInt(r.End, 10)
+	key := defaultKey + sep + SLICEKEYSTRING + "=bytes=" + strconv.FormatInt(r.Start, 10) + "-" + strconv.FormatInt(r.End, 10)
 	return key
 }
-
-// TODO JvD: implement
-//func setCacheKeyForRange(d BeforeCacheLookUpData) {
-//
-//}
 
 func parseRange(rangeString string) (ByteRangeInfo, error) {
 	parts := strings.Split(rangeString, "-")
@@ -428,42 +400,42 @@ func parseRangeHeader(rHdrVal string) []ByteRangeInfo {
 }
 
 // --
-type responseType struct {
-	Headers http.Header
-	Body    []byte
-}
-
-func httpGet(URL, headers string) responseType {
-	client := &http.Client{}
-	req, err := http.NewRequest("GET", URL, nil)
-	if err != nil {
-		// TODO return error
-		log.Debugln("ERROR in httpGet")
-	}
-	for _, hdrString := range strings.Split(headers, " ") {
-		if hdrString == "" {
-			continue
-		}
-		parts := strings.Split(hdrString, ":")
-		if parts[0] == "Host" {
-			req.Host = parts[1]
-		} else {
-			//log.Println("> ", parts)
-			req.Header.Set(parts[0], parts[1])
-		}
-	}
-	//log.Printf(">>>> %v", req)
-	resp, err := client.Do(req)
-	if err != nil {
-		// TODO error
-		log.Debugln("ERROR in httpGet")
-	}
-	defer resp.Body.Close()
-	var response responseType
-	response.Headers = web.CopyHeader(resp.Header)
-	response.Body, err = ioutil.ReadAll(resp.Body)
-	if err != nil {
-		log.Debugln("ERROR in httpGet")
-	}
-	return response
-}
+//type responseType struct {
+//	Headers http.Header
+//	Body    []byte
+//}
+//
+//func httpGet(URL, headers string) responseType {
+//	client := &http.Client{}
+//	req, err := http.NewRequest("GET", URL, nil)
+//	if err != nil {
+//		// TODO return error
+//		log.Debugln("ERROR in httpGet")
+//	}
+//	for _, hdrString := range strings.Split(headers, " ") {
+//		if hdrString == "" {
+//			continue
+//		}
+//		parts := strings.Split(hdrString, ":")
+//		if parts[0] == "Host" {
+//			req.Host = parts[1]
+//		} else {
+//			//log.Println("> ", parts)
+//			req.Header.Set(parts[0], parts[1])
+//		}
+//	}
+//	//log.Printf(">>>> %v", req)
+//	resp, err := client.Do(req)
+//	if err != nil {
+//		// TODO error
+//		log.Debugln("ERROR in httpGet")
+//	}
+//	defer resp.Body.Close()
+//	var response responseType
+//	response.Headers = web.CopyHeader(resp.Header)
+//	response.Body, err = ioutil.ReadAll(resp.Body)
+//	if err != nil {
+//		log.Debugln("ERROR in httpGet")
+//	}
+//	return response
+//}

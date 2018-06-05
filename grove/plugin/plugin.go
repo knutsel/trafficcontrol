@@ -90,6 +90,7 @@ type BeforeRespondData struct {
 	Hdr       *http.Header
 	Body      *[]byte
 	RemapRule string
+	Cache     icache.Cache
 	Context   *interface{}
 }
 

@@ -259,7 +259,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		if reqHost != nil {
 			responder.ToFQDN = *reqHost
 		}
-		beforeRespData := plugin.BeforeRespondData{Req: r, CacheObj: cacheObj, Code: &codePtr, Hdr: &hdrsPtr, Body: &bodyPtr, RemapRule: remappingProducer.Name()}
+		beforeRespData := plugin.BeforeRespondData{Req: r, CacheObj: cacheObj, Code: &codePtr, Hdr: &hdrsPtr, Body: &bodyPtr, RemapRule: remappingProducer.Name(), Cache: cache}
 		h.plugins.OnBeforeRespond(remappingProducer.PluginCfg(), pluginContext, beforeRespData)
 		responder.Do()
 		return
@@ -314,7 +314,8 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	if reqHost != nil {
 		responder.ToFQDN = *reqHost
 	}
-	beforeRespData := plugin.BeforeRespondData{Req: r, CacheObj: cacheObj, Code: &codePtr, Hdr: &hdrsPtr, Body: &bodyPtr, RemapRule: remappingProducer.Name()}
+	log.Debugf("SLICE: cache in handler: %v\n", cache)
+	beforeRespData := plugin.BeforeRespondData{Req: r, CacheObj: cacheObj, Code: &codePtr, Hdr: &hdrsPtr, Body: &bodyPtr, RemapRule: remappingProducer.Name(), Cache: cache}
 	h.plugins.OnBeforeRespond(remappingProducer.PluginCfg(), pluginContext, beforeRespData)
 	responder.Do()
 }
