@@ -25,13 +25,22 @@ import (
 
 	"github.com/apache/incubator-trafficcontrol/grove/web"
 	"github.com/apache/incubator-trafficcontrol/lib/go-log"
+	"sync"
 )
 
-type byteRange struct {
-	Start int64
-	End   int64
+type ByteRangeInfo struct {
+	Start   int64
+	End     int64
+	IsSlice bool
+}
+type RequestInfo struct {
+	RequestedRanges []ByteRangeInfo
+	//SlicesNeeded     []*ByteRangeInfo
+	OriginalCacheKey *string
 }
 
+const SSIZE = 1024
+const SLICEKEYSTRING = "grove_range_req_handler_plugin_data"
 const MAXINT64 = 1<<63 - 1
 
 type rangeRequestConfig struct {
@@ -59,7 +68,7 @@ func rangeReqHandleLoad(b json.RawMessage) interface{} {
 		log.Errorln("range_rew_handler  loading config, unmarshalling JSON: " + err.Error())
 		return nil
 	}
-	if !(cfg.Mode == "get_full_serve_range" || cfg.Mode == "patch") {
+	if !(cfg.Mode == "get_full_serve_range" || cfg.Mode == "store_ranges" || cfg.Mode == "slice") {
 		log.Errorf("Unknown mode for range_req_handler plugin: %s\n", cfg.Mode)
 	}
 
@@ -82,9 +91,10 @@ func rangeReqHandlerOnRequest(icfg interface{}, d OnRequestData) bool {
 		return false
 	}
 	log.Debugf("Range string is: %s\n", rHeader)
+
 	// put the ranges [] in the context so we can use it later
 	byteRanges := parseRangeHeader(rHeader)
-	*d.Context = byteRanges
+	*d.Context = &RequestInfo{byteRanges, nil}
 	return false
 }
 
@@ -95,6 +105,16 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		log.Errorf("range_req_handler config '%v' type '%T' expected *rangeRequestConfig\n", icfg, icfg)
 		return
 	}
+
+	ictx := d.Context
+	ctx, ok := (*ictx).(*RequestInfo)
+	if !ok {
+		log.Errorf("Invalid context: %v\n", ictx)
+	}
+	if len(ctx.RequestedRanges) == 0 {
+		return // there was no (valid) range header
+	}
+
 	if cfg.Mode == "store_ranges" {
 		sep := "?"
 		if strings.Contains(d.DefaultCacheKey, "?") {
@@ -103,6 +123,89 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		newKey := d.DefaultCacheKey + sep + "grove_range_req_handler_plugin_data=" + d.Req.Header.Get("Range")
 		d.CacheKeyOverrideFunc(newKey)
 		log.Debugf("range_req_handler: store_ranges default key:%s, new key:%s\n", d.DefaultCacheKey, newKey)
+	}
+
+	if cfg.Mode == "slice" { // not needed for the last one, but makes things more readable.
+		if len(ctx.RequestedRanges) > 1 {
+			log.Errorf("SLICE: multipart ranges not supported in slice mode (yet?), results are undetermined")
+			return
+		}
+		ctx.OriginalCacheKey = &d.DefaultCacheKey
+		if ctx.RequestedRanges[0].IsSlice { // if the request is already a slice, just mod the cachekey and move on.
+			newKey := rangeCacheKey(d.DefaultCacheKey, ctx.RequestedRanges[0])
+			d.CacheKeyOverrideFunc(newKey)
+			log.Debugf("SLICE: range_req_handler: slice default key:%s, new key:%s\n", d.DefaultCacheKey, newKey)
+			return
+		}
+
+		// --
+		thisRange := ctx.RequestedRanges[0]
+		firstSlice := int64(thisRange.Start / SSIZE)
+		lastSlice := int64((thisRange.End / SSIZE) + 1)
+		requestList := make([]*http.Request, 0)
+		for i := firstSlice; i < lastSlice; i++ {
+
+			bRange := ByteRangeInfo{i * SSIZE, ((i + 1) * SSIZE) - 1, true}
+
+			key := rangeCacheKey(d.DefaultCacheKey, bRange)
+			_, ok := d.Cache.Get(key)
+			if ok { // Get will put it at the top of the LRU. This will enUse Peek in Respond to build response, and not increase the hitCount anymore
+				log.Debugf("SLICE URL HIT for key: %s\n", key)
+				continue
+			}
+			URL := "http://localhost:8080" + d.Req.RequestURI
+			log.Debugf("SLICE URL MISS for key: %s queuing GET for %s\n", key, URL)
+			req, err := http.NewRequest("GET", URL, nil)
+			if err != nil {
+				log.Errorf("ERROR") // TODO
+			}
+			req.Host = d.Req.Host
+			req.Header.Set("Range", "bytes="+strconv.FormatInt(bRange.Start, 10)+"-"+strconv.FormatInt(bRange.End, 10))
+			requestList = append(requestList, req)
+		}
+
+		if len(requestList) == 0 { // it is a HIT for all slices
+			start := firstSlice * SSIZE
+			end := ((firstSlice + 1) * SSIZE) - 1
+			bRange := ByteRangeInfo{start, end, true}
+			newKey := rangeCacheKey(d.DefaultCacheKey, bRange)
+			d.CacheKeyOverrideFunc(newKey)
+			return
+		}
+
+		// we have at least one slice MISS, set the key of the upstream request to the first one, and set the range as wll
+		sep := "?"
+		if strings.Contains(d.DefaultCacheKey, "?") {
+			sep = "&"
+		}
+		newKey := d.DefaultCacheKey + sep + SLICEKEYSTRING + "=" + requestList[0].Header.Get("Range")
+		d.CacheKeyOverrideFunc(newKey)
+		d.Req.Header.Set("Range", requestList[0].Header.Get("Range"))
+		log.Debugf("SLICE original request: range_req_handler: store_ranges default key:%s, new key:%s\n", d.DefaultCacheKey, newKey)
+
+		if len(requestList) == 1 { // if there is only one, we're done here. The modified upstream will get the right slice.
+			return
+		}
+
+		log.Debugf("SLICE Starting child requests")
+		client := &http.Client{}
+		var wg sync.WaitGroup
+
+		// do all slice requests except the first, since that one is handled by the original request, and wait for them to finish
+		for i := 1; i < len(requestList); i++ {
+			wg.Add(1)
+			go func(request *http.Request) {
+				defer wg.Done()
+				_, err := client.Do(request)
+				if err != nil {
+					log.Errorf("Error in slicer:%v\n", err)
+				}
+			}(requestList[i])
+		}
+		wg.Wait()
+		log.Debugf("SLICE All done.")
+		// --
+
 	}
 }
 
@@ -133,11 +236,11 @@ func rangeReqHandleBeforeParent(icfg interface{}, d BeforeParentRequestData) {
 func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 	log.Debugf("rangeReqHandleBeforeRespond calling\n")
 	ictx := d.Context
-	ctx, ok := (*ictx).([]byteRange)
+	ctx, ok := (*ictx).(*RequestInfo)
 	if !ok {
 		log.Errorf("Invalid context: %v\n", ictx)
 	}
-	if len(ctx) == 0 {
+	if len(ctx.RequestedRanges) == 0 {
 		return // there was no (valid) range header
 	}
 
@@ -155,17 +258,49 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 	multipart := false
 	originalContentType := d.Hdr.Get("Content-type")
 	*d.Hdr = web.CopyHeader(*d.Hdr) // copy the headers, we don't want to mod the cacheObj
-	if len(ctx) > 1 {
+	if len(ctx.RequestedRanges) > 1 {
 		multipart = true
 		multipartBoundaryString = cfg.MultiPartBoundary
 		d.Hdr.Set("Content-Type", fmt.Sprintf("multipart/byteranges; boundary=%s", multipartBoundaryString))
 	}
+
 	totalContentLength, err := strconv.ParseInt(d.Hdr.Get("Content-Length"), 10, 64)
 	if err != nil {
 		log.Errorf("Invalid Content-Length header: %v\n", d.Hdr.Get("Content-Length"))
 	}
+
+	bodyStart := int64(0)
+	if cfg.Mode == "slice" {
+		sliceBody := make([]byte, 0)
+		log.Debugf("SLICE requested: %v\n", ctx.RequestedRanges)
+		thisRange := ctx.RequestedRanges[0]
+		firstSlice := int64(thisRange.Start / SSIZE)
+		lastSlice := int64((thisRange.End / SSIZE) + 1)
+		bodyStart = firstSlice * SSIZE
+		for i := firstSlice; i < lastSlice; i++ {
+
+			bRange := ByteRangeInfo{i * SSIZE, ((i + 1) * SSIZE) - 1, true}
+			cacheKey := rangeCacheKey(*ctx.OriginalCacheKey, bRange)
+			log.Debugf("SLICE: GETTING KEY: %s from d.Cache\n", cacheKey)
+			cachedObject, ok := d.Cache.Peek(cacheKey) // use Peek here, we already moved in the LRU and updated hitCount when we looked it up in beforeCacheLookup
+			if !ok {
+				log.Errorf("SLICE ERROR %s is not available in beforeRespond - this should not be possible, unless your cache is rolling _very_ fast!!!\n", cacheKey)
+				*d.Body = nil
+				*d.Code = http.StatusInternalServerError
+				return
+			}
+			sliceBody = append(sliceBody, cachedObject.Body...)
+		}
+		lenString := strings.Split(d.Hdr.Get("Content-Range"), "/")[1]
+		totalContentLength, err = strconv.ParseInt(lenString, 10, 64)
+		if err != nil {
+			log.Errorf("Invalid Content Range header: %v", d.Hdr.Get("Content-Range"))
+		}
+		*d.Body = sliceBody
+	}
+
 	body := make([]byte, 0)
-	for _, thisRange := range ctx {
+	for _, thisRange := range ctx.RequestedRanges {
 		if thisRange.End == MAXINT64 || thisRange.End >= totalContentLength { // if the end range is "", or too large serve until the end
 			thisRange.End = totalContentLength - 1
 		}
@@ -183,7 +318,8 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 		} else {
 			d.Hdr.Add("Content-Range", rangeString+"/"+strconv.FormatInt(totalContentLength, 10))
 		}
-		bSlice := (*d.Body)[thisRange.Start : thisRange.End+1]
+		log.Debugf("[thisRange.Start-bodyStart : thisRange.End+1-bodyStart] = [%d-%d : %d+1-%d]\n", thisRange.Start, bodyStart, thisRange.End, bodyStart)
+		bSlice := (*d.Body)[thisRange.Start-bodyStart : thisRange.End+1-bodyStart]
 		body = append(body, bSlice...)
 	}
 	if multipart {
@@ -195,17 +331,17 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 	return
 }
 
-func parseRange(rangeString string) (byteRange, error) {
+func parseRange(rangeString string) (ByteRangeInfo, error) {
 	parts := strings.Split(rangeString, "-")
 
-	var bRange byteRange
+	var bRange ByteRangeInfo
 	if parts[0] == "" {
 		bRange.Start = -1 // -1 means from the end
 	} else {
 		start, err := strconv.ParseInt(parts[0], 10, 64)
 		if err != nil {
 			log.Errorf("Error converting rangeString start \"%\" to numbers\n", rangeString)
-			return byteRange{}, err
+			return ByteRangeInfo{}, err
 		}
 		bRange.Start = start
 	}
@@ -215,15 +351,15 @@ func parseRange(rangeString string) (byteRange, error) {
 		end, err := strconv.ParseInt(parts[1], 10, 64)
 		if err != nil {
 			log.Errorf("Error converting rangeString end \"%\" to numbers\n", rangeString)
-			return byteRange{}, err
+			return ByteRangeInfo{}, err
 		}
 		bRange.End = end
 	}
 	return bRange, nil
 }
 
-func parseRangeHeader(rHdrVal string) []byteRange {
-	byteRanges := make([]byteRange, 0)
+func parseRangeHeader(rHdrVal string) []ByteRangeInfo {
+	byteRanges := make([]ByteRangeInfo, 0)
 	rangeStringParts := strings.Split(rHdrVal, "=")
 	if rangeStringParts[0] != "bytes" {
 		log.Errorf("Not a valid Range type: \"%s\"\n", rangeStringParts[0])
@@ -248,7 +384,7 @@ func parseRangeHeader(rHdrVal string) []byteRange {
 	})
 
 	// Then, copy ranges into collapsedRanges if applicable, collapse as needed
-	collapsedRanges := make([]byteRange, 0)
+	collapsedRanges := make([]ByteRangeInfo, 0)
 	j := 0
 	collapsedRanges = append(collapsedRanges, byteRanges[j])
 	for i := 1; i < len(byteRanges); i++ {
@@ -270,4 +406,13 @@ func parseRangeHeader(rHdrVal string) []byteRange {
 	}
 
 	return collapsedRanges
+}
+
+func rangeCacheKey(defaultKey string, r ByteRangeInfo) string {
+	sep := "?"
+	if strings.Contains(defaultKey, "?") {
+		sep = "&"
+	}
+	key := defaultKey + sep + SLICEKEYSTRING + "=bytes=" + strconv.FormatInt(r.Start, 10) + "-" + strconv.FormatInt(r.End, 10)
+	return key
 }

@@ -28,6 +28,7 @@ import (
 	"github.com/apache/incubator-trafficcontrol/grove/cachedata"
 	"github.com/apache/incubator-trafficcontrol/grove/cacheobj"
 	"github.com/apache/incubator-trafficcontrol/grove/config"
+	"github.com/apache/incubator-trafficcontrol/grove/icache"
 	"github.com/apache/incubator-trafficcontrol/grove/remapdata"
 	"github.com/apache/incubator-trafficcontrol/grove/stat"
 	"github.com/apache/incubator-trafficcontrol/grove/web"
@@ -89,6 +90,7 @@ type BeforeRespondData struct {
 	Hdr       *http.Header
 	Body      *[]byte
 	RemapRule string
+	Cache     icache.Cache
 	Context   *interface{}
 }
 
@@ -96,6 +98,7 @@ type BeforeCacheLookUpData struct {
 	Req                  *http.Request
 	CacheKeyOverrideFunc func(string)
 	DefaultCacheKey      string
+	Cache                icache.Cache
 	Context              *interface{}
 }
 
