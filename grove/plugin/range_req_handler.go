@@ -211,7 +211,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		// do all slice requests except the first, since that one is handled by the original request, and wait for them to finish
 		for i := 1; i < len(requestList); i++ {
 			swg.Add()
-			func(request *http.Request) {
+			go func(request *http.Request) {
 				defer swg.Done()
 				resp, err := client.Do(request)
 				if err != nil {
