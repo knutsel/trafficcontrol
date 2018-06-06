@@ -18,14 +18,17 @@ import (
 	"crypto/rand"
 	"encoding/json"
 	"fmt"
+	"io"
+	"io/ioutil"
 	"net/http"
 	"sort"
 	"strconv"
 	"strings"
+	"time"
 
 	"github.com/apache/incubator-trafficcontrol/grove/web"
 	"github.com/apache/incubator-trafficcontrol/lib/go-log"
-	"sync"
+	"github.com/remeh/sizedwaitgroup"
 )
 
 type ByteRangeInfo struct {
@@ -39,9 +42,13 @@ type RequestInfo struct {
 	OriginalCacheKey *string
 }
 
-const SSIZE = 1024
-const SLICEKEYSTRING = "grove_range_req_handler_plugin_data"
-const MAXINT64 = 1<<63 - 1
+const (
+	MaxIdleConnections int = 20
+	RequestTimeout     int = 5000
+	SSIZE                  = 4 * 1204
+	SLICEKEYSTRING         = "grove_range_req_handler_plugin_data"
+	MAXINT64               = 1<<63 - 1
+)
 
 type rangeRequestConfig struct {
 	Mode              string `json:"mode"`
@@ -142,6 +149,9 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		thisRange := ctx.RequestedRanges[0]
 		firstSlice := int64(thisRange.Start / SSIZE)
 		lastSlice := int64((thisRange.End / SSIZE) + 1)
+		if thisRange.End == MAXINT64 {
+			// TODO JvD: handle the "0-" (everything) GET.
+		}
 		requestList := make([]*http.Request, 0)
 		for i := firstSlice; i < lastSlice; i++ {
 
@@ -188,21 +198,34 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		}
 
 		log.Debugf("SLICE Starting child requests")
-		client := &http.Client{}
-		var wg sync.WaitGroup
+		//client := &http.Client{}
+		//var wg sync.WaitGroup
+		swg := sizedwaitgroup.New(256)
+		client := &http.Client{
+			Transport: &http.Transport{
+				MaxIdleConnsPerHost: MaxIdleConnections,
+			},
+			Timeout: time.Duration(RequestTimeout) * time.Second,
+		}
 
 		// do all slice requests except the first, since that one is handled by the original request, and wait for them to finish
 		for i := 1; i < len(requestList); i++ {
-			wg.Add(1)
-			go func(request *http.Request) {
-				defer wg.Done()
-				_, err := client.Do(request)
+			swg.Add()
+			func(request *http.Request) {
+				defer swg.Done()
+				resp, err := client.Do(request)
 				if err != nil {
 					log.Errorf("Error in slicer:%v\n", err)
 				}
+				_, err = io.Copy(ioutil.Discard, resp.Body)
+				if err != nil {
+					log.Errorf("Error in slicer:%v\n", err)
+				}
+				resp.Body.Close()
 			}(requestList[i])
+
 		}
-		wg.Wait()
+		swg.Wait()
 		log.Debugf("SLICE All done.")
 		// --
 
@@ -316,7 +339,7 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 			body = append(body, []byte("Content-type: "+originalContentType+"\r\n")...)
 			body = append(body, []byte("Content-range: "+rangeString+"/"+strconv.FormatInt(totalContentLength, 10)+"\r\n\r\n")...)
 		} else {
-			d.Hdr.Add("Content-Range", rangeString+"/"+strconv.FormatInt(totalContentLength, 10))
+			d.Hdr.Set("Content-Range", rangeString+"/"+strconv.FormatInt(totalContentLength, 10))
 		}
 		log.Debugf("[thisRange.Start-bodyStart : thisRange.End+1-bodyStart] = [%d-%d : %d+1-%d]\n", thisRange.Start, bodyStart, thisRange.End, bodyStart)
 		bSlice := (*d.Body)[thisRange.Start-bodyStart : thisRange.End+1-bodyStart]
@@ -328,6 +351,7 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 	d.Hdr.Set("Content-Length", strconv.Itoa(len(body)))
 	*d.Body = body
 	*d.Code = http.StatusPartialContent
+	log.Debugf("ALL DONE %d = %d \n%v\n\n", len(body), len(*d.Body), d.Hdr)
 	return
 }
 
