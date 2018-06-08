@@ -26,6 +26,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/apache/incubator-trafficcontrol/grove/cacheobj"
+	"github.com/apache/incubator-trafficcontrol/grove/icache"
 	"github.com/apache/incubator-trafficcontrol/grove/web"
 	"github.com/apache/incubator-trafficcontrol/lib/go-log"
 	"github.com/remeh/sizedwaitgroup"
@@ -139,25 +141,30 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		}
 		ctx.OriginalCacheKey = &d.DefaultCacheKey
 		if ctx.RequestedRanges[0].IsSlice { // if the request is already a slice, just mod the cachekey and move on.
-			newKey := rangeCacheKey(d.DefaultCacheKey, ctx.RequestedRanges[0])
+			newKey := cacheKeyForRange(d.DefaultCacheKey, ctx.RequestedRanges[0])
 			d.CacheKeyOverrideFunc(newKey)
 			log.Debugf("SLICE: range_req_handler: slice default key:%s, new key:%s\n", d.DefaultCacheKey, newKey)
 			return
 		}
 
-		// --
+		headers := getObjectInfo(d.DefaultCacheKey, d.Cache)
+		lenStr := headers.Get("Content-Length")
+		totalContentLength, err := strconv.ParseInt(lenStr, 10, 64)
+		if err != nil {
+			log.Errorf("Error converting content-length: %v", err)
+		}
 		thisRange := ctx.RequestedRanges[0]
+		if thisRange.End == MAXINT64 || thisRange.End > totalContentLength {
+			thisRange.End = totalContentLength
+		}
 		firstSlice := int64(thisRange.Start / SSIZE)
 		lastSlice := int64((thisRange.End / SSIZE) + 1)
-		if thisRange.End == MAXINT64 {
-			// TODO JvD: handle the "0-" (everything) GET.
-		}
 		requestList := make([]*http.Request, 0)
 		for i := firstSlice; i < lastSlice; i++ {
 
 			bRange := ByteRangeInfo{i * SSIZE, ((i + 1) * SSIZE) - 1, true}
 
-			key := rangeCacheKey(d.DefaultCacheKey, bRange)
+			key := cacheKeyForRange(d.DefaultCacheKey, bRange)
 			_, ok := d.Cache.Get(key)
 			if ok { // Get will put it at the top of the LRU. This will enUse Peek in Respond to build response, and not increase the hitCount anymore
 				log.Debugf("SLICE URL HIT for key: %s\n", key)
@@ -178,7 +185,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 			start := firstSlice * SSIZE
 			end := ((firstSlice + 1) * SSIZE) - 1
 			bRange := ByteRangeInfo{start, end, true}
-			newKey := rangeCacheKey(d.DefaultCacheKey, bRange)
+			newKey := cacheKeyForRange(d.DefaultCacheKey, bRange)
 			d.CacheKeyOverrideFunc(newKey)
 			return
 		}
@@ -198,9 +205,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		}
 
 		log.Debugf("SLICE Starting child requests")
-		//client := &http.Client{}
-		//var wg sync.WaitGroup
-		swg := sizedwaitgroup.New(256)
+		swg := sizedwaitgroup.New(1)
 		client := &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConnsPerHost: MaxIdleConnections,
@@ -227,9 +232,44 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		}
 		swg.Wait()
 		log.Debugf("SLICE All done.")
-		// --
-
 	}
+}
+
+//Use HEAD to get the info about the complete object (ETag, Content-Length). HEADs normally do not get cached, and only get served from previous GETs, so this should be safe.
+func getObjectInfo(originalCacheKey string, cache icache.Cache) http.Header {
+	URL := strings.Replace(originalCacheKey, "GET:", "", 1)
+	key := "HEAD:" + URL
+	cachedObj, ok := cache.Get(key)
+	if !ok {
+		log.Debugf("SLICE: ObjectInfo not in cache - doing a HEAD request for %s\n", URL)
+		client := &http.Client{
+			Transport: &http.Transport{
+				MaxIdleConnsPerHost: MaxIdleConnections,
+			},
+			Timeout: time.Duration(RequestTimeout) * time.Second,
+		}
+		req, err := http.NewRequest("HEAD", URL, nil)
+		if err != nil {
+			log.Errorf("ERROR") // TODO
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Errorf("Error in slicer HEAD:%v\n", err)
+		}
+		_, err = io.Copy(ioutil.Discard, resp.Body)
+		if err != nil {
+			log.Errorf("Error in slicer:%v\n", err)
+		}
+		log.Debugf("::: %v\n", resp)
+		//reqHeader http.Header, bytes []byte, code int, originCode int, proxyURL string, respHeader http.Header, reqTime time.Time, reqRespTime time.Time, respRespTime time.Time, lastModified time.Time) *CacheObj {
+		cachedObj = cacheobj.New(req.Header, nil, resp.StatusCode, resp.StatusCode, "", resp.Header, time.Now(), time.Now(), time.Now(), time.Time{})
+		//cachedObj.RespHeaders = web.CopyHeader(resp.Header)
+		resp.Body.Close()
+		cache.Add(key, cachedObj)
+	}
+
+	log.Debugf("UUUU %v\n", cachedObj.RespHeaders)
+	return cachedObj.RespHeaders
 }
 
 // rangeReqHandleBeforeParent changes the parent request if needed (mode == get_full_serve_range)
@@ -303,7 +343,7 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 		for i := firstSlice; i < lastSlice; i++ {
 
 			bRange := ByteRangeInfo{i * SSIZE, ((i + 1) * SSIZE) - 1, true}
-			cacheKey := rangeCacheKey(*ctx.OriginalCacheKey, bRange)
+			cacheKey := cacheKeyForRange(*ctx.OriginalCacheKey, bRange)
 			log.Debugf("SLICE: GETTING KEY: %s from d.Cache\n", cacheKey)
 			cachedObject, ok := d.Cache.Peek(cacheKey) // use Peek here, we already moved in the LRU and updated hitCount when we looked it up in beforeCacheLookup
 			if !ok {
@@ -432,7 +472,7 @@ func parseRangeHeader(rHdrVal string) []ByteRangeInfo {
 	return collapsedRanges
 }
 
-func rangeCacheKey(defaultKey string, r ByteRangeInfo) string {
+func cacheKeyForRange(defaultKey string, r ByteRangeInfo) string {
 	sep := "?"
 	if strings.Contains(defaultKey, "?") {
 		sep = "&"
