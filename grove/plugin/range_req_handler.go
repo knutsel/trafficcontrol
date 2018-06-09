@@ -47,7 +47,7 @@ type RequestInfo struct {
 const (
 	MaxIdleConnections int = 20
 	RequestTimeout     int = 5000
-	SSIZE                  = 4 * 1204
+	SSIZE                  = 4096
 	SLICEKEYSTRING         = "grove_range_req_handler_plugin_data"
 	MAXINT64               = 1<<63 - 1
 )
@@ -97,6 +97,7 @@ func rangeReqHandlerOnRequest(icfg interface{}, d OnRequestData) bool {
 	rHeader := d.R.Header.Get("Range")
 	if rHeader == "" {
 		log.Debugf("No Range header found\n")
+		//rHeader = "bytes=0-" // It is a GET for everything, get all slices.
 		return false
 	}
 	log.Debugf("Range string is: %s\n", rHeader)
@@ -155,10 +156,14 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		}
 		thisRange := ctx.RequestedRanges[0]
 		if thisRange.End == MAXINT64 || thisRange.End > totalContentLength {
-			thisRange.End = totalContentLength
+			thisRange.End = totalContentLength - 1
+			ctx.RequestedRanges[0].End = thisRange.End // to use in beforeRespond
 		}
 		firstSlice := int64(thisRange.Start / SSIZE)
-		lastSlice := int64((thisRange.End / SSIZE) + 1)
+		lastSlice := int64((thisRange.End / SSIZE))
+		if thisRange.End%SSIZE != 0 {
+			lastSlice++
+		}
 		requestList := make([]*http.Request, 0)
 		for i := firstSlice; i < lastSlice; i++ {
 
@@ -190,7 +195,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 			return
 		}
 
-		// we have at least one slice MISS, set the key of the upstream request to the first one, and set the range as wll
+		// we have at least one slice MISS, set the key of the upstream request to the first one, and set the range as well
 		sep := "?"
 		if strings.Contains(d.DefaultCacheKey, "?") {
 			sep = "&"
@@ -205,7 +210,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		}
 
 		log.Debugf("SLICE Starting child requests")
-		swg := sizedwaitgroup.New(1)
+		swg := sizedwaitgroup.New(8)
 		client := &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConnsPerHost: MaxIdleConnections,
@@ -233,43 +238,6 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		swg.Wait()
 		log.Debugf("SLICE All done.")
 	}
-}
-
-//Use HEAD to get the info about the complete object (ETag, Content-Length). HEADs normally do not get cached, and only get served from previous GETs, so this should be safe.
-func getObjectInfo(originalCacheKey string, cache icache.Cache) http.Header {
-	URL := strings.Replace(originalCacheKey, "GET:", "", 1)
-	key := "HEAD:" + URL
-	cachedObj, ok := cache.Get(key)
-	if !ok {
-		log.Debugf("SLICE: ObjectInfo not in cache - doing a HEAD request for %s\n", URL)
-		client := &http.Client{
-			Transport: &http.Transport{
-				MaxIdleConnsPerHost: MaxIdleConnections,
-			},
-			Timeout: time.Duration(RequestTimeout) * time.Second,
-		}
-		req, err := http.NewRequest("HEAD", URL, nil)
-		if err != nil {
-			log.Errorf("ERROR") // TODO
-		}
-		resp, err := client.Do(req)
-		if err != nil {
-			log.Errorf("Error in slicer HEAD:%v\n", err)
-		}
-		_, err = io.Copy(ioutil.Discard, resp.Body)
-		if err != nil {
-			log.Errorf("Error in slicer:%v\n", err)
-		}
-		log.Debugf("::: %v\n", resp)
-		//reqHeader http.Header, bytes []byte, code int, originCode int, proxyURL string, respHeader http.Header, reqTime time.Time, reqRespTime time.Time, respRespTime time.Time, lastModified time.Time) *CacheObj {
-		cachedObj = cacheobj.New(req.Header, nil, resp.StatusCode, resp.StatusCode, "", resp.Header, time.Now(), time.Now(), time.Now(), time.Time{})
-		//cachedObj.RespHeaders = web.CopyHeader(resp.Header)
-		resp.Body.Close()
-		cache.Add(key, cachedObj)
-	}
-
-	log.Debugf("UUUU %v\n", cachedObj.RespHeaders)
-	return cachedObj.RespHeaders
 }
 
 // rangeReqHandleBeforeParent changes the parent request if needed (mode == get_full_serve_range)
@@ -338,8 +306,12 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 		log.Debugf("SLICE requested: %v\n", ctx.RequestedRanges)
 		thisRange := ctx.RequestedRanges[0]
 		firstSlice := int64(thisRange.Start / SSIZE)
-		lastSlice := int64((thisRange.End / SSIZE) + 1)
+		lastSlice := int64((thisRange.End / SSIZE))
+		if thisRange.End%SSIZE != 0 {
+			lastSlice++
+		}
 		bodyStart = firstSlice * SSIZE
+		//log.Debugf("first %d, last %d, start -- startByte %d, endByte %d %d\n", firstSlice, lastSlice, bodyStart, firstSlice*SSIZE, lastSlice*SSIZE+SSIZE)
 		for i := firstSlice; i < lastSlice; i++ {
 
 			bRange := ByteRangeInfo{i * SSIZE, ((i + 1) * SSIZE) - 1, true}
@@ -349,6 +321,9 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 			if !ok {
 				log.Errorf("SLICE ERROR %s is not available in beforeRespond - this should not be possible, unless your cache is rolling _very_ fast!!!\n", cacheKey)
 				*d.Body = nil
+				d.Hdr.Del("Content-Range")
+				d.Hdr.Del("Content-Length")
+				//*d.Hdr.Del("Content-Length")
 				*d.Code = http.StatusInternalServerError
 				return
 			}
@@ -364,7 +339,7 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 
 	body := make([]byte, 0)
 	for _, thisRange := range ctx.RequestedRanges {
-		if thisRange.End == MAXINT64 || thisRange.End >= totalContentLength { // if the end range is "", or too large serve until the end
+		if thisRange.End == MAXINT64 || thisRange.End >= totalContentLength-1 { // if the end range is "", or too large serve until the end
 			thisRange.End = totalContentLength - 1
 		}
 		if thisRange.Start == -1 {
@@ -393,6 +368,43 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 	*d.Code = http.StatusPartialContent
 	log.Debugf("ALL DONE %d = %d \n%v\n\n", len(body), len(*d.Body), d.Hdr)
 	return
+}
+
+//Use HEAD to get the info about the complete object (ETag, Content-Length). HEADs normally do not get cached, and only get served from previous GETs, so this should be safe.
+func getObjectInfo(originalCacheKey string, cache icache.Cache) http.Header {
+	URL := strings.Replace(originalCacheKey, "GET:", "", 1)
+	key := "HEAD:" + URL
+	cachedObj, ok := cache.Get(key)
+	if !ok {
+		log.Debugf("SLICE: ObjectInfo not in cache - doing a HEAD request for %s\n", URL)
+		client := &http.Client{
+			Transport: &http.Transport{
+				MaxIdleConnsPerHost: MaxIdleConnections,
+			},
+			Timeout: time.Duration(RequestTimeout) * time.Second,
+		}
+		req, err := http.NewRequest("HEAD", URL, nil)
+		if err != nil {
+			log.Errorf("ERROR") // TODO
+		}
+		resp, err := client.Do(req)
+		if err != nil {
+			log.Errorf("Error in slicer HEAD:%v\n", err)
+		}
+		_, err = io.Copy(ioutil.Discard, resp.Body)
+		if err != nil {
+			log.Errorf("Error in slicer:%v\n", err)
+		}
+		log.Debugf("::: %v\n", resp)
+		//reqHeader http.Header, bytes []byte, code int, originCode int, proxyURL string, respHeader http.Header, reqTime time.Time, reqRespTime time.Time, respRespTime time.Time, lastModified time.Time) *CacheObj {
+		cachedObj = cacheobj.New(req.Header, nil, resp.StatusCode, resp.StatusCode, "", resp.Header, time.Now(), time.Now(), time.Now(), time.Time{})
+		//cachedObj.RespHeaders = web.CopyHeader(resp.Header)
+		resp.Body.Close()
+		cache.Add(key, cachedObj)
+	}
+
+	log.Debugf("UUUU %v\n", cachedObj.RespHeaders)
+	return cachedObj.RespHeaders
 }
 
 func parseRange(rangeString string) (ByteRangeInfo, error) {
