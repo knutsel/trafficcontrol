@@ -41,15 +41,18 @@ type ByteRangeInfo struct {
 type RequestInfo struct {
 	RequestedRanges []ByteRangeInfo
 	//SlicesNeeded     []*ByteRangeInfo
-	OriginalCacheKey *string
+	TotalContentLength int64
+	OriginalCacheKey   *string
+	// hasFailed // TODO JvD
 }
 
-const (
-	MaxIdleConnections int = 20
-	RequestTimeout     int = 5000
-	SSIZE                  = 4096
-	SLICEKEYSTRING         = "grove_range_req_handler_plugin_data"
-	MAXINT64               = 1<<63 - 1
+const ( // TODO JvD: most of these should be run time configurable.
+	MaxIdleConnections = 20
+	RequestTimeout     = 5000
+	SSIZE              = 4096
+	SLICEKEYSTRING     = "grove_range_req_handler_plugin_data"
+	WGSIZE             = 8
+	MAXINT64           = 1<<63 - 1
 )
 
 type rangeRequestConfig struct {
@@ -104,7 +107,7 @@ func rangeReqHandlerOnRequest(icfg interface{}, d OnRequestData) bool {
 
 	// put the ranges [] in the context so we can use it later
 	byteRanges := parseRangeHeader(rHeader)
-	*d.Context = &RequestInfo{byteRanges, nil}
+	*d.Context = &RequestInfo{byteRanges, 0, nil}
 	return false
 }
 
@@ -148,22 +151,29 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 			return
 		}
 
-		headers := getObjectInfo(d.DefaultCacheKey, d.Cache)
+		// Not a slice so we have to determine what slices are needed, and if they are in cache
+		headers := getObjectInfo(d.DefaultCacheKey, d.Cache) // getObjectInfo will increase the hitCount of the HEAD, and put it at the top of the LRU, which is not bac
 		lenStr := headers.Get("Content-Length")
-		totalContentLength, err := strconv.ParseInt(lenStr, 10, 64)
+		var err error
+		ctx.TotalContentLength, err = strconv.ParseInt(lenStr, 10, 64)
 		if err != nil {
 			log.Errorf("Error converting content-length: %v", err)
 		}
 		thisRange := ctx.RequestedRanges[0]
-		if thisRange.End == MAXINT64 || thisRange.End > totalContentLength {
-			thisRange.End = totalContentLength - 1
+		if thisRange.Start == -1 {
+			thisRange.Start = ctx.TotalContentLength - thisRange.End
+			thisRange.End = ctx.TotalContentLength - 1
+		}
+		if thisRange.End == MAXINT64 || thisRange.End > ctx.TotalContentLength {
+			thisRange.End = ctx.TotalContentLength - 1
 			ctx.RequestedRanges[0].End = thisRange.End // to use in beforeRespond
 		}
 		firstSlice := int64(thisRange.Start / SSIZE)
-		lastSlice := int64((thisRange.End / SSIZE))
-		if thisRange.End%SSIZE != 0 {
+		lastSlice := int64(thisRange.End / SSIZE)
+		if thisRange.End%SSIZE != 0 || thisRange.End == 0 { // thisRange.End == 0 is for range 0-0, which is valid.
 			lastSlice++
 		}
+		log.Debugf("first %d, last %d, start %d, end %d -- mod %d\n", firstSlice, lastSlice, thisRange.Start, thisRange.End, thisRange.End%SSIZE)
 		requestList := make([]*http.Request, 0)
 		for i := firstSlice; i < lastSlice; i++ {
 
@@ -171,7 +181,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 
 			key := cacheKeyForRange(d.DefaultCacheKey, bRange)
 			_, ok := d.Cache.Get(key)
-			if ok { // Get will put it at the top of the LRU. This will enUse Peek in Respond to build response, and not increase the hitCount anymore
+			if ok { // Get will put it at the top of the LRU. Use Peek in Respond to build response, and not increase the hitCount anymore
 				log.Debugf("SLICE URL HIT for key: %s\n", key)
 				continue
 			}
@@ -186,7 +196,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 			requestList = append(requestList, req)
 		}
 
-		if len(requestList) == 0 { // it is a HIT for all slices
+		if len(requestList) == 0 { // It is a HIT for all slices
 			start := firstSlice * SSIZE
 			end := ((firstSlice + 1) * SSIZE) - 1
 			bRange := ByteRangeInfo{start, end, true}
@@ -195,7 +205,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 			return
 		}
 
-		// we have at least one slice MISS, set the key of the upstream request to the first one, and set the range as well
+		// There is at least one slice MISS, set the key of the upstream request to the first one, and set the range as well
 		sep := "?"
 		if strings.Contains(d.DefaultCacheKey, "?") {
 			sep = "&"
@@ -210,7 +220,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		}
 
 		log.Debugf("SLICE Starting child requests")
-		swg := sizedwaitgroup.New(8)
+		swg := sizedwaitgroup.New(WGSIZE)
 		client := &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConnsPerHost: MaxIdleConnections,
@@ -218,7 +228,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 			Timeout: time.Duration(RequestTimeout) * time.Second,
 		}
 
-		// do all slice requests except the first, since that one is handled by the original request, and wait for them to finish
+		// Do all slice requests except the first, since that one is handled by the original request, and wait for them to finish
 		for i := 1; i < len(requestList); i++ {
 			swg.Add()
 			go func(request *http.Request) {
@@ -271,9 +281,6 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 	if !ok {
 		log.Errorf("Invalid context: %v\n", ictx)
 	}
-	if len(ctx.RequestedRanges) == 0 {
-		return // there was no (valid) range header
-	}
 
 	cfg, ok := icfg.(*rangeRequestConfig)
 	if !ok {
@@ -282,6 +289,9 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 	}
 	if cfg.Mode == "store_ranges" {
 		return // no need to do anything here.
+	}
+	if len(ctx.RequestedRanges) == 0 && cfg.Mode != "slice" {
+		return // there was no (valid) range header, and we are in get_full mode - return the 200 OK
 	}
 
 	// mode != store_ranges
@@ -295,23 +305,23 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 		d.Hdr.Set("Content-Type", fmt.Sprintf("multipart/byteranges; boundary=%s", multipartBoundaryString))
 	}
 
-	totalContentLength, err := strconv.ParseInt(d.Hdr.Get("Content-Length"), 10, 64)
-	if err != nil {
-		log.Errorf("Invalid Content-Length header: %v\n", d.Hdr.Get("Content-Length"))
-	}
-
 	bodyStart := int64(0)
 	if cfg.Mode == "slice" {
 		sliceBody := make([]byte, 0)
 		log.Debugf("SLICE requested: %v\n", ctx.RequestedRanges)
 		thisRange := ctx.RequestedRanges[0]
+		// TODO JvD: some of this is dupe code
+		if thisRange.Start == -1 {
+			thisRange.Start = ctx.TotalContentLength - thisRange.End
+			thisRange.End = ctx.TotalContentLength - 1
+		}
 		firstSlice := int64(thisRange.Start / SSIZE)
-		lastSlice := int64((thisRange.End / SSIZE))
-		if thisRange.End%SSIZE != 0 {
+		lastSlice := int64(thisRange.End / SSIZE)
+		if thisRange.End%SSIZE != 0 || thisRange.End == 0 {
 			lastSlice++
 		}
 		bodyStart = firstSlice * SSIZE
-		//log.Debugf("first %d, last %d, start -- startByte %d, endByte %d %d\n", firstSlice, lastSlice, bodyStart, firstSlice*SSIZE, lastSlice*SSIZE+SSIZE)
+		log.Debugf("Start %d, End %d, firstS %d, lastS %d, start -- startByte %d, endByte %d %d\n", thisRange.Start, thisRange.End, firstSlice, lastSlice, bodyStart, firstSlice*SSIZE, lastSlice*SSIZE+SSIZE)
 		for i := firstSlice; i < lastSlice; i++ {
 
 			bRange := ByteRangeInfo{i * SSIZE, ((i + 1) * SSIZE) - 1, true}
@@ -323,28 +333,28 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 				*d.Body = nil
 				d.Hdr.Del("Content-Range")
 				d.Hdr.Del("Content-Length")
-				//*d.Hdr.Del("Content-Length")
 				*d.Code = http.StatusInternalServerError
 				return
 			}
 			sliceBody = append(sliceBody, cachedObject.Body...)
 		}
-		lenString := strings.Split(d.Hdr.Get("Content-Range"), "/")[1]
-		totalContentLength, err = strconv.ParseInt(lenString, 10, 64)
-		if err != nil {
-			log.Errorf("Invalid Content Range header: %v", d.Hdr.Get("Content-Range"))
-		}
 		*d.Body = sliceBody
+	} else { // not slice mode
+		var err error
+		ctx.TotalContentLength, err = strconv.ParseInt(d.Hdr.Get("Content-Length"), 10, 64)
+		if err != nil {
+			log.Errorf("Invalid Content-Length header: %v\n", d.Hdr.Get("Content-Length"))
+		}
 	}
 
 	body := make([]byte, 0)
 	for _, thisRange := range ctx.RequestedRanges {
-		if thisRange.End == MAXINT64 || thisRange.End >= totalContentLength-1 { // if the end range is "", or too large serve until the end
-			thisRange.End = totalContentLength - 1
+		if thisRange.End == MAXINT64 || thisRange.End >= ctx.TotalContentLength-1 { // if the end range is "", or too large serve until the end
+			thisRange.End = ctx.TotalContentLength - 1
 		}
 		if thisRange.Start == -1 {
-			thisRange.Start = totalContentLength - thisRange.End
-			thisRange.End = totalContentLength - 1
+			thisRange.Start = ctx.TotalContentLength - thisRange.End
+			thisRange.End = ctx.TotalContentLength - 1
 		}
 
 		rangeString := "bytes " + strconv.FormatInt(thisRange.Start, 10) + "-" + strconv.FormatInt(thisRange.End, 10)
@@ -352,9 +362,9 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 		if multipart {
 			body = append(body, []byte("\r\n--"+multipartBoundaryString+"\r\n")...)
 			body = append(body, []byte("Content-type: "+originalContentType+"\r\n")...)
-			body = append(body, []byte("Content-range: "+rangeString+"/"+strconv.FormatInt(totalContentLength, 10)+"\r\n\r\n")...)
+			body = append(body, []byte("Content-range: "+rangeString+"/"+strconv.FormatInt(ctx.TotalContentLength, 10)+"\r\n\r\n")...)
 		} else {
-			d.Hdr.Set("Content-Range", rangeString+"/"+strconv.FormatInt(totalContentLength, 10))
+			d.Hdr.Set("Content-Range", rangeString+"/"+strconv.FormatInt(ctx.TotalContentLength, 10))
 		}
 		log.Debugf("[thisRange.Start-bodyStart : thisRange.End+1-bodyStart] = [%d-%d : %d+1-%d]\n", thisRange.Start, bodyStart, thisRange.End, bodyStart)
 		bSlice := (*d.Body)[thisRange.Start-bodyStart : thisRange.End+1-bodyStart]
@@ -366,11 +376,11 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 	d.Hdr.Set("Content-Length", strconv.Itoa(len(body)))
 	*d.Body = body
 	*d.Code = http.StatusPartialContent
-	log.Debugf("ALL DONE %d = %d \n%v\n\n", len(body), len(*d.Body), d.Hdr)
+	log.Debugf("ALL DONE %d = %d \n", len(body), len(*d.Body))
 	return
 }
 
-//Use HEAD to get the info about the complete object (ETag, Content-Length). HEADs normally do not get cached, and only get served from previous GETs, so this should be safe.
+// Use HEAD to get the info about the complete object (ETag, Content-Length). HEADs normally do not get cached, and only get served from previous GETs, so this should be safe.
 func getObjectInfo(originalCacheKey string, cache icache.Cache) http.Header {
 	URL := strings.Replace(originalCacheKey, "GET:", "", 1)
 	key := "HEAD:" + URL
@@ -389,21 +399,17 @@ func getObjectInfo(originalCacheKey string, cache icache.Cache) http.Header {
 		}
 		resp, err := client.Do(req)
 		if err != nil {
-			log.Errorf("Error in slicer HEAD:%v\n", err)
+			log.Errorf("Error in slicer HEAD:%v\n", err) // TODO
 		}
 		_, err = io.Copy(ioutil.Discard, resp.Body)
 		if err != nil {
-			log.Errorf("Error in slicer:%v\n", err)
+			log.Errorf("Error in slicer:%v\n", err) // TODO
 		}
-		log.Debugf("::: %v\n", resp)
-		//reqHeader http.Header, bytes []byte, code int, originCode int, proxyURL string, respHeader http.Header, reqTime time.Time, reqRespTime time.Time, respRespTime time.Time, lastModified time.Time) *CacheObj {
 		cachedObj = cacheobj.New(req.Header, nil, resp.StatusCode, resp.StatusCode, "", resp.Header, time.Now(), time.Now(), time.Now(), time.Time{})
-		//cachedObj.RespHeaders = web.CopyHeader(resp.Header)
 		resp.Body.Close()
 		cache.Add(key, cachedObj)
 	}
 
-	log.Debugf("UUUU %v\n", cachedObj.RespHeaders)
 	return cachedObj.RespHeaders
 }
 
