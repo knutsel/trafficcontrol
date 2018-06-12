@@ -43,6 +43,7 @@ type RequestInfo struct {
 	TotalContentLength int64
 	OriginalCacheKey   *string
 	SlicesNeeded       []ByteRangeInfo
+	IsRangeRequest     bool
 	// hasFailed // TODO JvD
 }
 
@@ -88,7 +89,7 @@ func rangeReqHandleLoad(b json.RawMessage) interface{} {
 	if _, err := rand.Read(multipartBoundaryBytes); err != nil {
 		log.Errorf("Error with rand.Read: %v\n", err)
 	}
-	// Use UUID format
+	// Create the multipart boundary string; use UUID format
 	cfg.MultiPartBoundary = fmt.Sprintf("%x-%x-%x-%x-%x", multipartBoundaryBytes[0:4], multipartBoundaryBytes[4:6], multipartBoundaryBytes[6:8], multipartBoundaryBytes[8:10], multipartBoundaryBytes[10:])
 
 	log.Debugf("range_rew_handler: load success: %+v\n", cfg)
@@ -98,16 +99,18 @@ func rangeReqHandleLoad(b json.RawMessage) interface{} {
 // rangeReqHandlerOnRequest determines if there is a Range header, and puts the ranges in *d.Context as a []byteRanges
 func rangeReqHandlerOnRequest(icfg interface{}, d OnRequestData) bool {
 	rHeader := d.R.Header.Get("Range")
+	isRR := true
 	if rHeader == "" {
 		log.Debugf("No Range header found\n")
-		//rHeader = "bytes=0-" // It is a GET for everything, get all slices.
-		return false
+		rHeader = "bytes=0-" // It is a GET for everything, get all slices.
+		isRR = false
+		//return false
 	}
 	log.Debugf("Range string is: %s\n", rHeader)
 
 	// put the ranges [] in the context so we can use it later
 	byteRanges := parseRangeHeader(rHeader)
-	*d.Context = &RequestInfo{byteRanges, 0, nil, make([]ByteRangeInfo, 0)}
+	*d.Context = &RequestInfo{byteRanges, 0, nil, make([]ByteRangeInfo, 0), isRR}
 	return false
 }
 
@@ -124,7 +127,8 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 	if !ok {
 		log.Errorf("Invalid context: %v\n", ictx)
 	}
-	if len(ctx.RequestedRanges) == 0 {
+	//log.Debugf("%v and %v\n", ctx.RequestedRanges, cfg.Mode)
+	if len(ctx.RequestedRanges) == 0 && cfg.Mode != "slice" {
 		return // there was no (valid) range header
 	}
 
@@ -178,8 +182,8 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 			ctx.SlicesNeeded = append(ctx.SlicesNeeded, bRange)
 
 			key := cacheKeyForRange(d.DefaultCacheKey, bRange)
-			_, ok := d.Cache.Get(key)
-			if ok { // Get will put it at the top of the LRU. Use Peek in Respond to build response, and not increase the hitCount anymore
+			_, ok := d.Cache.Get(key) // Get will put it at the top of the LRU. Use Peek in Respond to build response, and not increase the hitCount anymore
+			if ok {
 				log.Debugf("SLICE URL HIT for key: %s\n", key)
 				continue
 			}
@@ -359,7 +363,12 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 	}
 	d.Hdr.Set("Content-Length", strconv.Itoa(len(body)))
 	*d.Body = body
-	*d.Code = http.StatusPartialContent
+	if ctx.IsRangeRequest {
+		*d.Code = http.StatusPartialContent
+	} else { // for slice mode - if it was a non range request, we just return all slices concatenated and a 200 OK
+		d.Hdr.Del("Content-Range")
+		*d.Code = http.StatusOK
+	}
 	log.Debugf("ALL DONE %d = %d \n", len(body), len(*d.Body))
 	return
 }
