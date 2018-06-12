@@ -39,10 +39,10 @@ type ByteRangeInfo struct {
 	IsSlice bool
 }
 type RequestInfo struct {
-	RequestedRanges []ByteRangeInfo
-	//SlicesNeeded     []*ByteRangeInfo
+	RequestedRanges    []ByteRangeInfo
 	TotalContentLength int64
 	OriginalCacheKey   *string
+	SlicesNeeded       []ByteRangeInfo
 	// hasFailed // TODO JvD
 }
 
@@ -107,7 +107,7 @@ func rangeReqHandlerOnRequest(icfg interface{}, d OnRequestData) bool {
 
 	// put the ranges [] in the context so we can use it later
 	byteRanges := parseRangeHeader(rHeader)
-	*d.Context = &RequestInfo{byteRanges, 0, nil}
+	*d.Context = &RequestInfo{byteRanges, 0, nil, make([]ByteRangeInfo, 0)}
 	return false
 }
 
@@ -169,15 +169,13 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 			ctx.RequestedRanges[0].End = thisRange.End // to use in beforeRespond
 		}
 		firstSlice := int64(thisRange.Start / SSIZE)
-		lastSlice := int64(thisRange.End / SSIZE)
-		if thisRange.End%SSIZE != 0 || thisRange.End == 0 { // thisRange.End == 0 is for range 0-0, which is valid.
-			lastSlice++
-		}
+		lastSlice := int64(thisRange.End/SSIZE) + 1
 		log.Debugf("first %d, last %d, start %d, end %d -- mod %d\n", firstSlice, lastSlice, thisRange.Start, thisRange.End, thisRange.End%SSIZE)
 		requestList := make([]*http.Request, 0)
 		for i := firstSlice; i < lastSlice; i++ {
 
 			bRange := ByteRangeInfo{i * SSIZE, ((i + 1) * SSIZE) - 1, true}
+			ctx.SlicesNeeded = append(ctx.SlicesNeeded, bRange)
 
 			key := cacheKeyForRange(d.DefaultCacheKey, bRange)
 			_, ok := d.Cache.Get(key)
@@ -236,6 +234,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 				resp, err := client.Do(request)
 				if err != nil {
 					log.Errorf("Error in slicer:%v\n", err)
+					return
 				}
 				_, err = io.Copy(ioutil.Discard, resp.Body)
 				if err != nil {
@@ -305,26 +304,11 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 		d.Hdr.Set("Content-Type", fmt.Sprintf("multipart/byteranges; boundary=%s", multipartBoundaryString))
 	}
 
-	bodyStart := int64(0)
+	offsetInBody := int64(0) // for non-slice modes
 	if cfg.Mode == "slice" {
+		offsetInBody = ctx.SlicesNeeded[0].Start
 		sliceBody := make([]byte, 0)
-		log.Debugf("SLICE requested: %v\n", ctx.RequestedRanges)
-		thisRange := ctx.RequestedRanges[0]
-		// TODO JvD: some of this is dupe code
-		if thisRange.Start == -1 {
-			thisRange.Start = ctx.TotalContentLength - thisRange.End
-			thisRange.End = ctx.TotalContentLength - 1
-		}
-		firstSlice := int64(thisRange.Start / SSIZE)
-		lastSlice := int64(thisRange.End / SSIZE)
-		if thisRange.End%SSIZE != 0 || thisRange.End == 0 {
-			lastSlice++
-		}
-		bodyStart = firstSlice * SSIZE
-		log.Debugf("Start %d, End %d, firstS %d, lastS %d, start -- startByte %d, endByte %d %d\n", thisRange.Start, thisRange.End, firstSlice, lastSlice, bodyStart, firstSlice*SSIZE, lastSlice*SSIZE+SSIZE)
-		for i := firstSlice; i < lastSlice; i++ {
-
-			bRange := ByteRangeInfo{i * SSIZE, ((i + 1) * SSIZE) - 1, true}
+		for _, bRange := range ctx.SlicesNeeded {
 			cacheKey := cacheKeyForRange(*ctx.OriginalCacheKey, bRange)
 			log.Debugf("SLICE: GETTING KEY: %s from d.Cache\n", cacheKey)
 			cachedObject, ok := d.Cache.Peek(cacheKey) // use Peek here, we already moved in the LRU and updated hitCount when we looked it up in beforeCacheLookup
@@ -339,7 +323,7 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 			sliceBody = append(sliceBody, cachedObject.Body...)
 		}
 		*d.Body = sliceBody
-	} else { // not slice mode
+	} else { // not slice mode, so we get the length from the Content-Length header
 		var err error
 		ctx.TotalContentLength, err = strconv.ParseInt(d.Hdr.Get("Content-Length"), 10, 64)
 		if err != nil {
@@ -366,8 +350,8 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 		} else {
 			d.Hdr.Set("Content-Range", rangeString+"/"+strconv.FormatInt(ctx.TotalContentLength, 10))
 		}
-		log.Debugf("[thisRange.Start-bodyStart : thisRange.End+1-bodyStart] = [%d-%d : %d+1-%d]\n", thisRange.Start, bodyStart, thisRange.End, bodyStart)
-		bSlice := (*d.Body)[thisRange.Start-bodyStart : thisRange.End+1-bodyStart]
+		log.Debugf("[thisRange.Start-offsetInBody : thisRange.End+1-offsetInBody] = [%d-%d : %d+1-%d]\n", thisRange.Start, offsetInBody, thisRange.End, offsetInBody)
+		bSlice := (*d.Body)[thisRange.Start-offsetInBody : thisRange.End+1-offsetInBody]
 		body = append(body, bSlice...)
 	}
 	if multipart {
