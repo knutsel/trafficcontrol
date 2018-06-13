@@ -53,18 +53,30 @@ do
   done
 done
 
-# TODO add -100 test
 host="disk1-test.cdn.kabletown.net"
- for r in "0-0" "2000-3000" "1099-3033" "50001-61111" "121212-121212" "121212-121215" "001-313" "4096-8191" "4096-8192" "4000-9000" "121200-121901" "0-5000" "6000-7000" "0-100" "5000-" "-100"
+for r in "0-0" "2000-3000" "1099-3033" "50001-61111" "121212-121212" "121212-121215" "001-313" "4096-8191" "4096-8192" "4000-9000" "121200-121901" "0-5000" "6000-7000" "0-100" "5000-" "-100"
   do
-    test="${CMP_TOOL}  --chdrs \"Host:$host Range:bytes=${r}\" --ohdrs \"Range:bytes=${r}\" --path \"10Mb.txt\" --ignorehdrs \"Server,Date\" --ignorempb"
-    testno=$(($testno+1))
-    echo -n "Test $testno ($test): "
+  test="${CMP_TOOL}  --chdrs \"Host:$host Range:bytes=${r}\" --ohdrs \"Range:bytes=${r}\" --path \"10Mb.txt\" --ignorehdrs \"Server,Date\""
+  testno=$(($testno+1))
+  echo -n "Test $testno ($test): "
 
-    ${CMP_TOOL}  --chdrs "Host:$host Range:bytes=${r}" --ohdrs "Range:bytes=${r}" --path "10Mb.txt" --ignorehdrs "Server,Date" --ignorempb
+  ${CMP_TOOL}  --chdrs "Host:$host Range:bytes=${r}" --ohdrs "Range:bytes=${r}" --path "10Mb.txt" --ignorehdrs "Server,Date"
 
-    result=$(($result+$?))
-  done
+  result=$(($result+$?))
+done
+
+# "normal" GET
+for host in "mem-test.cdn.kabletown.net" "disk-test.cdn.kabletown.net" "disk1-test.cdn.kabletown.net"
+do
+  test="${CMP_TOOL}  --chdrs \"Host:$host\" --path \"10Mb.txt\" --ignorehdrs \"Server,Date\""
+  testno=$(($testno+1))
+  echo -n "Test $testno ($test): "
+
+  ${CMP_TOOL}  --chdrs "Host:$host Range:bytes=${r}" --ohdrs "Range:bytes=${r}" --path "10Mb.txt" --ignorehdrs "Server,Date"
+
+  result=$(($result+$?))
+done
+
 echo "plugin/range_req_handler: $testno tests done, $result failed."
 
 exit $result

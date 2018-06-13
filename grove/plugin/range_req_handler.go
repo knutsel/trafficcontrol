@@ -53,7 +53,7 @@ const ( // TODO JvD: most of these should be run time configurable.
 	RequestTimeout     = 5000
 	SSIZE              = 4096
 	SLICEKEYSTRING     = "grove_range_req_handler_plugin_data"
-	WGSIZE             = 8
+	WGSIZE             = 128
 	MAXINT64           = 1<<63 - 1
 )
 

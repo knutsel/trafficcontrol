@@ -74,6 +74,9 @@
             "parent_selection": "consistent-hash",
             "cache_name": "disk",
             "plugins": {
+                "range_req_handler": {
+                    "mode": "slice"
+                },
                 "modify_parent_request_headers": {
                     "set": [
                         {
