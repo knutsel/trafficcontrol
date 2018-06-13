@@ -24,7 +24,7 @@ file="10Mb.txt"
 result=0
 testno=0
 
-for host in "mem-test.cdn.kabletown.net" "disk-test.cdn.kabletown.net"
+for host in "store-ranges.cdn.kabletown.net" "get-full.cdn.kabletown.net"
 do
   for r in "0-0" "0-100" "5000-" "-100" "8-10,9-15,100-200" "0-300,200-250" "-33,66-99,50-150"
   do
@@ -39,7 +39,7 @@ do
 done
 
 # multipart
-for host in "mem-test.cdn.kabletown.net" "disk-test.cdn.kabletown.net"
+for host in "store-ranges.cdn.kabletown.net" "get-full.cdn.kabletown.net"
 do
   for r in "0-0" "0-100" "5000-" "-100" "0-0,10-15" "0-100,200-210" "33-99,101-188" "8-10,9-15,100-200" "0-300,200-250" "-33,66-99,50-150" "300-304,500-,600-700"
   do
@@ -53,7 +53,7 @@ do
   done
 done
 
-host="disk1-test.cdn.kabletown.net"
+host="slice.cdn.kabletown.net"
 for r in "0-0" "2000-3000" "1099-3033" "50001-61111" "121212-121212" "121212-121215" "001-313" "4096-8191" "4096-8192" "4000-9000" "121200-121901" "0-5000" "6000-7000" "0-100" "5000-" "-100"
   do
   test="${CMP_TOOL}  --chdrs \"Host:$host Range:bytes=${r}\" --ohdrs \"Range:bytes=${r}\" --path \"10Mb.txt\" --ignorehdrs \"Server,Date\""
@@ -66,7 +66,7 @@ for r in "0-0" "2000-3000" "1099-3033" "50001-61111" "121212-121212" "121212-121
 done
 
 # "normal" GET
-for host in "mem-test.cdn.kabletown.net" "disk-test.cdn.kabletown.net" "disk1-test.cdn.kabletown.net"
+for host in "store-ranges.cdn.kabletown.net" "get-full.cdn.kabletown.net" "slice.cdn.kabletown.net"
 do
   test="${CMP_TOOL}  --chdrs \"Host:$host\" --path \"10Mb.txt\" --ignorehdrs \"Server,Date\""
   testno=$(($testno+1))
