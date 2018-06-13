@@ -44,6 +44,7 @@ type RequestInfo struct {
 	OriginalCacheKey   *string
 	SlicesNeeded       []ByteRangeInfo
 	IsRangeRequest     bool
+	//ETag               string
 	// hasFailed // TODO JvD
 }
 
@@ -90,7 +91,12 @@ func rangeReqHandleLoad(b json.RawMessage) interface{} {
 		log.Errorf("Error with rand.Read: %v\n", err)
 	}
 	// Create the multipart boundary string; use UUID format
-	cfg.MultiPartBoundary = fmt.Sprintf("%x-%x-%x-%x-%x", multipartBoundaryBytes[0:4], multipartBoundaryBytes[4:6], multipartBoundaryBytes[6:8], multipartBoundaryBytes[8:10], multipartBoundaryBytes[10:])
+	cfg.MultiPartBoundary = fmt.Sprintf("%x-%x-%x-%x-%x",
+		multipartBoundaryBytes[0:4],
+		multipartBoundaryBytes[4:6],
+		multipartBoundaryBytes[6:8],
+		multipartBoundaryBytes[8:10],
+		multipartBoundaryBytes[10:])
 
 	log.Debugf("range_rew_handler: load success: %+v\n", cfg)
 	return &cfg
@@ -106,7 +112,7 @@ func rangeReqHandlerOnRequest(icfg interface{}, d OnRequestData) bool {
 		isRR = false
 		//return false
 	}
-	log.Debugf("Range string is: %s\n", rHeader)
+	//log.Debugf("Range string is: %s\n", rHeader)
 
 	// put the ranges [] in the context so we can use it later
 	byteRanges := parseRangeHeader(rHeader)
@@ -127,8 +133,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 	if !ok {
 		log.Errorf("Invalid context: %v\n", ictx)
 	}
-	//log.Debugf("%v and %v\n", ctx.RequestedRanges, cfg.Mode)
-	if len(ctx.RequestedRanges) == 0 && cfg.Mode != "slice" {
+	if !ctx.IsRangeRequest && cfg.Mode != "slice" {
 		return // there was no (valid) range header
 	}
 
@@ -148,15 +153,15 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 			return
 		}
 		ctx.OriginalCacheKey = &d.DefaultCacheKey
-		if ctx.RequestedRanges[0].IsSlice { // if the request is already a slice, just mod the cachekey and move on.
+		if ctx.RequestedRanges[0].IsSlice { //  The request is for a single slice at the exact boundary, just set the cacheKey and return
 			newKey := cacheKeyForRange(d.DefaultCacheKey, ctx.RequestedRanges[0])
 			d.CacheKeyOverrideFunc(newKey)
-			log.Debugf("SLICE: range_req_handler: slice default key:%s, new key:%s\n", d.DefaultCacheKey, newKey)
+			log.Debugf("SLICE: slice default key:%s, new key:%s\n", d.DefaultCacheKey, newKey)
 			return
 		}
 
-		// Not a slice so we have to determine what slices are needed, and if they are in cache
-		headers := getObjectInfo(d.DefaultCacheKey, d.Cache) // getObjectInfo will increase the hitCount of the HEAD, and put it at the top of the LRU, which is not bac
+		// The request is not for just a single slice, so we have to determine what slices are needed, and if they are in cache
+		headers := getObjectInfo(d.DefaultCacheKey, d.Cache) // getObjectInfo will increase the hitCount of the HEAD, and put it at the top of the LRU, which is not bad
 		lenStr := headers.Get("Content-Length")
 		var err error
 		ctx.TotalContentLength, err = strconv.ParseInt(lenStr, 10, 64)
@@ -174,7 +179,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		}
 		firstSlice := int64(thisRange.Start / SSIZE)
 		lastSlice := int64(thisRange.End/SSIZE) + 1
-		log.Debugf("first %d, last %d, start %d, end %d -- mod %d\n", firstSlice, lastSlice, thisRange.Start, thisRange.End, thisRange.End%SSIZE)
+		//log.Debugf("first %d, last %d, start %d, end %d -- mod %d\n", firstSlice, lastSlice, thisRange.Start, thisRange.End, thisRange.End%SSIZE)
 		requestList := make([]*http.Request, 0)
 		for i := firstSlice; i < lastSlice; i++ {
 
@@ -182,8 +187,8 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 			ctx.SlicesNeeded = append(ctx.SlicesNeeded, bRange)
 
 			key := cacheKeyForRange(d.DefaultCacheKey, bRange)
-			_, ok := d.Cache.Get(key) // Get will put it at the top of the LRU. Use Peek in Respond to build response, and not increase the hitCount anymore
-			if ok {
+			cachedObj, ok := d.Cache.Get(key) // Get will put it at the top of the LRU. Use Peek in Respond to build response, and not increase the hitCount anymore
+			if ok && cachedObj.RespHeaders.Get("ETag") == headers.Get("ETag") {
 				log.Debugf("SLICE URL HIT for key: %s\n", key)
 				continue
 			}
@@ -195,6 +200,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 			}
 			req.Host = d.Req.Host
 			req.Header.Set("Range", "bytes="+strconv.FormatInt(bRange.Start, 10)+"-"+strconv.FormatInt(bRange.End, 10))
+			req.Header.Set("User-Agent", "GroveSlicer/0.1")
 			requestList = append(requestList, req)
 		}
 
@@ -221,7 +227,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 			return
 		}
 
-		log.Debugf("SLICE Starting child requests")
+		//log.Debugf("SLICE Starting child requests")
 		swg := sizedwaitgroup.New(WGSIZE)
 		client := &http.Client{
 			Transport: &http.Transport{
@@ -249,7 +255,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 
 		}
 		swg.Wait()
-		log.Debugf("SLICE All done.")
+		//log.Debugf("SLICE All done.")
 	}
 }
 
@@ -293,8 +299,8 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 	if cfg.Mode == "store_ranges" {
 		return // no need to do anything here.
 	}
-	if len(ctx.RequestedRanges) == 0 && cfg.Mode != "slice" {
-		return // there was no (valid) range header, and we are in get_full mode - return the 200 OK
+	if !ctx.IsRangeRequest && cfg.Mode != "slice" {
+		return // there was no (valid) range header, and we are not in slice mode - return the 200 OK
 	}
 
 	// mode != store_ranges
@@ -314,7 +320,7 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 		sliceBody := make([]byte, 0)
 		for _, bRange := range ctx.SlicesNeeded {
 			cacheKey := cacheKeyForRange(*ctx.OriginalCacheKey, bRange)
-			log.Debugf("SLICE: GETTING KEY: %s from d.Cache\n", cacheKey)
+			//log.Debugf("SLICE: GETTING KEY: %s from d.Cache\n", cacheKey)
 			cachedObject, ok := d.Cache.Peek(cacheKey) // use Peek here, we already moved in the LRU and updated hitCount when we looked it up in beforeCacheLookup
 			if !ok {
 				log.Errorf("SLICE ERROR %s is not available in beforeRespond - this should not be possible, unless your cache is rolling _very_ fast!!!\n", cacheKey)
@@ -346,7 +352,7 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 		}
 
 		rangeString := "bytes " + strconv.FormatInt(thisRange.Start, 10) + "-" + strconv.FormatInt(thisRange.End, 10)
-		log.Debugf("range:%d-%d\n", thisRange.Start, thisRange.End)
+		//log.Debugf("range:%d-%d\n", thisRange.Start, thisRange.End)
 		if multipart {
 			body = append(body, []byte("\r\n--"+multipartBoundaryString+"\r\n")...)
 			body = append(body, []byte("Content-type: "+originalContentType+"\r\n")...)
@@ -354,7 +360,7 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 		} else {
 			d.Hdr.Set("Content-Range", rangeString+"/"+strconv.FormatInt(ctx.TotalContentLength, 10))
 		}
-		log.Debugf("[thisRange.Start-offsetInBody : thisRange.End+1-offsetInBody] = [%d-%d : %d+1-%d]\n", thisRange.Start, offsetInBody, thisRange.End, offsetInBody)
+		//log.Debugf("[thisRange.Start-offsetInBody : thisRange.End+1-offsetInBody] = [%d-%d : %d+1-%d]\n", thisRange.Start, offsetInBody, thisRange.End, offsetInBody)
 		bSlice := (*d.Body)[thisRange.Start-offsetInBody : thisRange.End+1-offsetInBody]
 		body = append(body, bSlice...)
 	}
@@ -369,12 +375,12 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 		d.Hdr.Del("Content-Range")
 		*d.Code = http.StatusOK
 	}
-	log.Debugf("ALL DONE %d = %d \n", len(body), len(*d.Body))
+	//log.Debugf("ALL DONE %d = %d \n", len(body), len(*d.Body))
 	return
 }
 
 // Use HEAD to get the info about the complete object (ETag, Content-Length). HEADs normally do not get cached, and only get served from previous GETs, so this should be safe.
-func getObjectInfo(originalCacheKey string, cache icache.Cache) http.Header {
+func getObjectInfo(originalCacheKey string, cache icache.Cache) http.Header { // TODO Check freshness
 	URL := strings.Replace(originalCacheKey, "GET:", "", 1)
 	key := "HEAD:" + URL
 	cachedObj, ok := cache.Get(key)
