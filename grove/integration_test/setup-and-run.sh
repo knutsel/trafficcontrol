@@ -96,6 +96,7 @@ pkill -HUP grove
 bash $GOPATH/src/github.com/apache/incubator-trafficcontrol/grove/integration_test/tests/plugins/modify_headers/test.sh
 
 cp $GOPATH/src/github.com/apache/incubator-trafficcontrol/grove/integration_test/tests/plugins/range_req_handler/remap.json /remap.json
+cp $GOPATH/src/github.com/apache/incubator-trafficcontrol/grove/integration_test/tests/plugins/range_req_handler/grove.cfg /grove.cfg
 pkill -HUP grove
 bash $GOPATH/src/github.com/apache/incubator-trafficcontrol/grove/integration_test/tests/plugins/range_req_handler/test.sh
 

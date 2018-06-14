@@ -44,21 +44,26 @@ type RequestInfo struct {
 	OriginalCacheKey   *string
 	SlicesNeeded       []ByteRangeInfo
 	IsRangeRequest     bool
-	//ETag               string
-	// hasFailed // TODO JvD
 }
 
 const ( // TODO JvD: most of these should be run time configurable.
 	MaxIdleConnections = 20
 	RequestTimeout     = 5000
-	SSIZE              = 4096
-	SLICEKEYSTRING     = "grove_range_req_handler_plugin_data"
-	WGSIZE             = 128
-	MAXINT64           = 1<<63 - 1
+	//SSIZE              = 1024
+	//SLICEKEYSTRING     = "grove_range_req_handler_plugin_data"
+	//WGSIZE             = 16
+	MAXINT64 = 1<<63 - 1
 )
+
+//  "slice-size": 4096,
+//                  "wg-size": 32,
+//                  "cache-key-string":"grove_range_req_handler_plugin_data"
 
 type rangeRequestConfig struct {
 	Mode              string `json:"mode"`
+	SliceSize         int64  `json:"slice-size,omitempty"`
+	WGSize            int    `json:"wg-size,omitempty"`
+	CacheKeyString    string `json:"cache-key-string,omitempty"`
 	MultiPartBoundary string // not in the json
 }
 
@@ -98,6 +103,9 @@ func rangeReqHandleLoad(b json.RawMessage) interface{} {
 		multipartBoundaryBytes[8:10],
 		multipartBoundaryBytes[10:])
 
+	if cfg.CacheKeyString == "" {
+		cfg.CacheKeyString = "grove_range_req_handler_plugin_data"
+	}
 	log.Debugf("range_rew_handler: load success: %+v\n", cfg)
 	return &cfg
 }
@@ -142,7 +150,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		if strings.Contains(d.DefaultCacheKey, "?") {
 			sep = "&"
 		}
-		newKey := d.DefaultCacheKey + sep + "grove_range_req_handler_plugin_data=" + d.Req.Header.Get("Range")
+		newKey := d.DefaultCacheKey + sep + cfg.CacheKeyString + "===" + d.Req.Header.Get("Range")
 		d.CacheKeyOverrideFunc(newKey)
 		log.Debugf("range_req_handler: store_ranges default key:%s, new key:%s\n", d.DefaultCacheKey, newKey)
 	}
@@ -154,7 +162,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		}
 		ctx.OriginalCacheKey = &d.DefaultCacheKey
 		if ctx.RequestedRanges[0].IsSlice { //  The request is for a single slice at the exact boundary, just set the cacheKey and return
-			newKey := cacheKeyForRange(d.DefaultCacheKey, ctx.RequestedRanges[0])
+			newKey := cacheKeyForRange(d.DefaultCacheKey, cfg.CacheKeyString, ctx.RequestedRanges[0])
 			d.CacheKeyOverrideFunc(newKey)
 			log.Debugf("SLICE: slice default key:%s, new key:%s\n", d.DefaultCacheKey, newKey)
 			return
@@ -177,16 +185,16 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 			thisRange.End = ctx.TotalContentLength - 1
 			ctx.RequestedRanges[0].End = thisRange.End // to use in beforeRespond
 		}
-		firstSlice := int64(thisRange.Start / SSIZE)
-		lastSlice := int64(thisRange.End/SSIZE) + 1
-		//log.Debugf("first %d, last %d, start %d, end %d -- mod %d\n", firstSlice, lastSlice, thisRange.Start, thisRange.End, thisRange.End%SSIZE)
+		firstSlice := int64(thisRange.Start / cfg.SliceSize)
+		lastSlice := int64(thisRange.End/cfg.SliceSize) + 1
+		//log.Debugf("first %d, last %d, start %d, end %d -- mod %d\n", firstSlice, lastSlice, thisRange.Start, thisRange.End, thisRange.End%cfg.SliceSize)
 		requestList := make([]*http.Request, 0)
 		for i := firstSlice; i < lastSlice; i++ {
 
-			bRange := ByteRangeInfo{i * SSIZE, ((i + 1) * SSIZE) - 1, true}
+			bRange := ByteRangeInfo{i * cfg.SliceSize, ((i + 1) * cfg.SliceSize) - 1, true}
 			ctx.SlicesNeeded = append(ctx.SlicesNeeded, bRange)
 
-			key := cacheKeyForRange(d.DefaultCacheKey, bRange)
+			key := cacheKeyForRange(d.DefaultCacheKey, cfg.CacheKeyString, bRange)
 			cachedObj, ok := d.Cache.Get(key) // Get will put it at the top of the LRU. Use Peek in Respond to build response, and not increase the hitCount anymore
 			if ok && cachedObj.RespHeaders.Get("ETag") == headers.Get("ETag") {
 				log.Debugf("SLICE URL HIT for key: %s\n", key)
@@ -205,10 +213,10 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		}
 
 		if len(requestList) == 0 { // It is a HIT for all slices
-			start := firstSlice * SSIZE
-			end := ((firstSlice + 1) * SSIZE) - 1
+			start := firstSlice * cfg.SliceSize
+			end := ((firstSlice + 1) * cfg.SliceSize) - 1
 			bRange := ByteRangeInfo{start, end, true}
-			newKey := cacheKeyForRange(d.DefaultCacheKey, bRange)
+			newKey := cacheKeyForRange(d.DefaultCacheKey, cfg.CacheKeyString, bRange)
 			d.CacheKeyOverrideFunc(newKey)
 			return
 		}
@@ -218,7 +226,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		if strings.Contains(d.DefaultCacheKey, "?") {
 			sep = "&"
 		}
-		newKey := d.DefaultCacheKey + sep + SLICEKEYSTRING + "=" + requestList[0].Header.Get("Range")
+		newKey := d.DefaultCacheKey + sep + cfg.CacheKeyString + "=" + requestList[0].Header.Get("Range")
 		d.CacheKeyOverrideFunc(newKey)
 		d.Req.Header.Set("Range", requestList[0].Header.Get("Range"))
 		log.Debugf("SLICE original request: range_req_handler: store_ranges default key:%s, new key:%s\n", d.DefaultCacheKey, newKey)
@@ -228,7 +236,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		}
 
 		//log.Debugf("SLICE Starting child requests")
-		swg := sizedwaitgroup.New(WGSIZE)
+		swg := sizedwaitgroup.New(cfg.WGSize)
 		client := &http.Client{
 			Transport: &http.Transport{
 				MaxIdleConnsPerHost: MaxIdleConnections,
@@ -319,7 +327,7 @@ func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
 		offsetInBody = ctx.SlicesNeeded[0].Start
 		sliceBody := make([]byte, 0)
 		for _, bRange := range ctx.SlicesNeeded {
-			cacheKey := cacheKeyForRange(*ctx.OriginalCacheKey, bRange)
+			cacheKey := cacheKeyForRange(*ctx.OriginalCacheKey, cfg.CacheKeyString, bRange)
 			//log.Debugf("SLICE: GETTING KEY: %s from d.Cache\n", cacheKey)
 			cachedObject, ok := d.Cache.Peek(cacheKey) // use Peek here, we already moved in the LRU and updated hitCount when we looked it up in beforeCacheLookup
 			if !ok {
@@ -489,11 +497,11 @@ func parseRangeHeader(rHdrVal string) []ByteRangeInfo {
 	return collapsedRanges
 }
 
-func cacheKeyForRange(defaultKey string, r ByteRangeInfo) string {
+func cacheKeyForRange(defaultKey string, cacheKeyString string, r ByteRangeInfo) string {
 	sep := "?"
 	if strings.Contains(defaultKey, "?") {
 		sep = "&"
 	}
-	key := defaultKey + sep + SLICEKEYSTRING + "=bytes=" + strconv.FormatInt(r.Start, 10) + "-" + strconv.FormatInt(r.End, 10)
+	key := defaultKey + sep + cacheKeyString + "=bytes=" + strconv.FormatInt(r.Start, 10) + "-" + strconv.FormatInt(r.End, 10)
 	return key
 }

@@ -24,9 +24,10 @@ file="10Mb.txt"
 result=0
 testno=0
 
+# some basic and overlapping ranges
 for host in "store-ranges.cdn.kabletown.net" "get-full.cdn.kabletown.net"
 do
-  for r in "0-0" "0-100" "5000-" "-100" "8-10,9-15,100-200" "0-300,200-250" "-33,66-99,50-150"
+  for r in "0-0" "0-100" "5000-" "-100" "8-10,9-15,100-200" "0-300,200-250" "-33,66-99,50-150" "8192-20000" "8191-8192" "2000-3012" "1021-"
   do
     test="${CMP_TOOL}  --chdrs \"Host:$host Range:bytes=${r}\" --ohdrs \"Range:bytes=${r}\" --path \"10Mb.txt\" --ignorehdrs \"Server,Date\""
     testno=$(($testno+1))
@@ -41,7 +42,7 @@ done
 # multipart
 for host in "store-ranges.cdn.kabletown.net" "get-full.cdn.kabletown.net"
 do
-  for r in "0-0" "0-100" "5000-" "-100" "0-0,10-15" "0-100,200-210" "33-99,101-188" "8-10,9-15,100-200" "0-300,200-250" "-33,66-99,50-150" "300-304,500-,600-700"
+  for r in "0-0,10-15" "0-100,200-210" "33-99,101-188" "8-10,9-15,100-200" "0-300,200-250" "-33,66-99,50-150" "300-304,500-,600-700"
   do
     test="${CMP_TOOL}  --chdrs \"Host:$host Range:bytes=${r}\" --ohdrs \"Range:bytes=${r}\" --path \"10Mb.txt\" --ignorehdrs \"Server,Date\" --ignorempb"
     testno=$(($testno+1))
@@ -54,7 +55,7 @@ do
 done
 
 host="slice.cdn.kabletown.net"
-for r in "0-0" "2000-3000" "1099-3033" "50001-61111" "121212-121212" "121212-121215" "001-313" "4096-8191" "4096-8192" "4000-9000" "121200-121901" "0-5000" "6000-7000" "0-100" "5000-" "-100"
+for r in "0-1048567" "22-2000000" "0-0" "8388608-9437183" "2000-3000" "1099-3033" "50001-61111" "121212-121212" "121212-121215" "001-313" "4096-8191" "4096-8192" "4000-9000" "121200-121901" "0-5000" "6000-7000" "0-100" "5000-" "-100" "8191-8192" "2000-3012" "1021-"
   do
   test="${CMP_TOOL}  --chdrs \"Host:$host Range:bytes=${r}\" --ohdrs \"Range:bytes=${r}\" --path \"10Mb.txt\" --ignorehdrs \"Server,Date\""
   testno=$(($testno+1))

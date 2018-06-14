@@ -72,10 +72,13 @@
             "from": "http://slice.cdn.kabletown.net",
             "name": "test1",
             "parent_selection": "consistent-hash",
-            "cache_name": "disk",
+            "cache_name": "my-disk-cache-two",
             "plugins": {
                 "range_req_handler": {
-                    "mode": "slice"
+                  "mode": "slice",
+                  "slice-size": 4096,
+                  "wg-size": 32,
+                  "cache-key-string":"jjjj"
                 },
                 "modify_parent_request_headers": {
                     "set": [
