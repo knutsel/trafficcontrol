@@ -46,18 +46,11 @@ type RequestInfo struct {
 	IsRangeRequest     bool
 }
 
-const ( // TODO JvD: most of these should be run time configurable.
+const (
 	MaxIdleConnections = 20
 	RequestTimeout     = 5000
-	//SSIZE              = 1024
-	//SLICEKEYSTRING     = "grove_range_req_handler_plugin_data"
-	//WGSIZE             = 16
-	MAXINT64 = 1<<63 - 1
+	MAXINT64           = 1<<63 - 1
 )
-
-//  "slice-size": 4096,
-//                  "wg-size": 32,
-//                  "cache-key-string":"grove_range_req_handler_plugin_data"
 
 type rangeRequestConfig struct {
 	Mode              string `json:"mode"`
@@ -150,7 +143,7 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 		if strings.Contains(d.DefaultCacheKey, "?") {
 			sep = "&"
 		}
-		newKey := d.DefaultCacheKey + sep + cfg.CacheKeyString + "===" + d.Req.Header.Get("Range")
+		newKey := d.DefaultCacheKey + sep + cfg.CacheKeyString + "=" + d.Req.Header.Get("Range")
 		d.CacheKeyOverrideFunc(newKey)
 		log.Debugf("range_req_handler: store_ranges default key:%s, new key:%s\n", d.DefaultCacheKey, newKey)
 	}
@@ -269,20 +262,21 @@ func rangeReqHandleBeforeCacheLookup(icfg interface{}, d BeforeCacheLookUpData) 
 
 // rangeReqHandleBeforeParent changes the parent request if needed (mode == get_full_serve_range)
 func rangeReqHandleBeforeParent(icfg interface{}, d BeforeParentRequestData) {
-	log.Debugf("rangeReqHandleBeforeParent calling.")
+	//log.Debugf("rangeReqHandleBeforeParent calling.")
 	rHeader := d.Req.Header.Get("Range")
 	if rHeader == "" {
 		log.Debugln("No Range header found")
 		return
 	}
-	log.Debugf("Range string is: %s\n", rHeader)
+	//log.Debugf("Range string is: %s\n", rHeader)
 	cfg, ok := icfg.(*rangeRequestConfig)
 	if !ok {
 		log.Errorf("range_req_handler config '%v' type '%T' expected *rangeRequestConfig\n", icfg, icfg)
 		return
 	}
+
+	// get_full_serve_range means get the whole thing from /org, but serve the requested range. Just remove the Range header from the upstream request
 	if cfg.Mode == "get_full_serve_range" {
-		// get_full_serve_range means get the whole thing from parent/org, but serve the requested range. Just remove the Range header from the upstream request
 		d.Req.Header.Del("Range")
 	}
 	return
@@ -292,7 +286,7 @@ func rangeReqHandleBeforeParent(icfg interface{}, d BeforeParentRequestData) {
 // Assume all the needed ranges have been put in cache before, which is the truth for "get_full_serve_range" mode which gets the whole object into cache.
 // If mode == store_ranges, do nothing, we just return the object stored-as is
 func rangeReqHandleBeforeRespond(icfg interface{}, d BeforeRespondData) {
-	log.Debugf("rangeReqHandleBeforeRespond calling\n")
+	//log.Debugf("rangeReqHandleBeforeRespond calling\n")
 	ictx := d.Context
 	ctx, ok := (*ictx).(*RequestInfo)
 	if !ok {
